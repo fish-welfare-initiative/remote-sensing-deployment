@@ -118,6 +118,25 @@ print(result[["lat", "lon", "pred_Chla"]])
 
 The IC.v2 validation run covered 19 pond/date combinations from the Innovation 2 dataset (20 were specified but WG-SRI2 lacked GPS coordinates in the ARA key). Pond IDs were matched to GPS coordinates using `2026 Github ARA Pond IDs Key.csv`. Results are in `results/`.
 
+### ARA Pond IDs Key — coordinate mismatches found
+
+When comparing our pipeline output against Sol's IC.v2 validation results, the predicted Chl-a VALUES were all correct but several were assigned to the wrong ponds. The root cause is that the `2026 Github ARA Pond IDs Key.csv` file has GPS coordinates mapped to incorrect pond IDs for 4 groups of ponds:
+
+| ARA Key Pond ID | ARA Key GPS coords actually belong to | Evidence |
+|-----------------|---------------------------------------|----------|
+| WG-NSR1 | WG-NSR3 | ARA's "NSR1" coords produce Sol's NSR3 prediction (148.30) |
+| WG-NSR2 | WG-NSR1 | ARA's "NSR2" coords produce Sol's NSR1 prediction (118.90) |
+| WG-NSR3 | WG-NSR2 | ARA's "NSR3" coords produce Sol's NSR2 prediction (135.15) |
+| WG-NRR1 | WG-NRR2 | ARA's "NRR1" coords produce Sol's NRR2 prediction (127.55) |
+| WG-NRR2 | WG-NRR1 | ARA's "NRR2" coords produce Sol's NRR1 prediction (65.10) |
+| WG-AKR1 | WG-AKR2 | ARA's "AKR1" coords produce Sol's AKR2 prediction (95.35) |
+| WG-AKR2 | WG-AKR1 | ARA's "AKR2" coords produce Sol's AKR1 prediction (74.22) |
+| WG-SRI1 | WG-SRI2 | ARA's "SRI1" coords produce Sol's SRI2 prediction (78.63) |
+
+WG-SRI1's real GPS coordinates are not present in the ARA key at all (and WG-SRI2 has no entry). The corrected results file (`IC_v2_Chla_Predictions_corrected.xlsx`) reassigns predictions to the correct pond IDs based on this analysis. After correction, all 19 predictions match Sol's validation output exactly (18 with correct pond IDs + SRI2 relabeled).
+
+**Sol should verify**: Are the GPS coordinates in the ARA key known to have these swaps? Or did Sol use different GPS sources for his original run?
+
 ## Model performance context
 
 From Sol's Remote Sensing Final Report, the Chl-a model on the Innovation 2 validation set achieved:
