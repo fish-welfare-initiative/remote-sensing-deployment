@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chl-a Predictor — Fish Welfare Initiative</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+:root {
+  --fwi-teal: #1a7a7a;
+  --fwi-dark: #0d3b3b;
+  --fwi-light: #e8f4f4;
+  --fwi-accent: #2ba3a3;
+  --fwi-bg: #f5f9f9;
+  --fwi-text: #1a2e2e;
+  --fwi-muted: #5a7a7a;
+  --fwi-border: #c8dede;
+  --fwi-white: #ffffff;
+  --fwi-warn: #d4a017;
+  --fwi-err: #c0392b;
+  --radius: 10px;
+  --shadow: 0 2px 12px rgba(0,0,0,0.08);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  background: var(--fwi-bg);
+  color: var(--fwi-text);
+  line-height: 1.5;
+}
+
+/* ── Header ── */
+header {
+  background: linear-gradient(135deg, var(--fwi-dark) 0%, var(--fwi-teal) 100%);
+  color: white;
+  padding: 20px 32px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  box-shadow: 0 2px 20px rgba(0,0,0,0.15);
+}
+.logo-fish {
+  width: 48px; height: 48px; opacity: 0.95;
+}
+header h1 { font-size: 22px; font-weight: 600; letter-spacing: -0.3px; }
+header .subtitle { font-size: 13px; opacity: 0.8; margin-top: 2px; }
+
+/* ── Layout ── */
+.container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+.grid { display: grid; grid-template-columns: 380px 1fr; gap: 24px; align-items: start; }
+@media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+
+/* ── Cards ── */
+.card {
+  background: var(--fwi-white);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  border: 1px solid var(--fwi-border);
+  overflow: hidden;
+}
+.card-header {
+  background: var(--fwi-light);
+  padding: 14px 20px;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--fwi-dark);
+  border-bottom: 1px solid var(--fwi-border);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.card-body { padding: 20px; }
+
+/* ── Form ── */
+label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fwi-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+select, input[type="date"] {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1.5px solid var(--fwi-border);
+  border-radius: 8px;
+  font-size: 14px;
+  color: var(--fwi-text);
+  background: var(--fwi-white);
+  transition: border-color 0.2s;
+  appearance: auto;
+}
+select:focus, input:focus {
+  outline: none;
+  border-color: var(--fwi-accent);
+  box-shadow: 0 0 0 3px rgba(42,163,163,0.15);
+}
+.form-group { margin-bottom: 18px; }
+
+.btn {
+  width: 100%;
+  padding: 12px;
+  background: linear-gradient(135deg, var(--fwi-teal), var(--fwi-accent));
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  letter-spacing: 0.3px;
+}
+.btn:hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(26,122,122,0.3); }
+.btn:active { transform: translateY(0); }
+.btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+
+.pond-info {
+  margin-top: 16px;
+  padding: 12px 16px;
+  background: var(--fwi-light);
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--fwi-muted);
+}
+.pond-info .coord { font-family: 'SF Mono', 'Consolas', monospace; font-size: 12px; color: var(--fwi-text); }
+
+/* ── Results ── */
+.result-hero {
+  text-align: center;
+  padding: 28px 20px;
+  background: linear-gradient(135deg, var(--fwi-dark), var(--fwi-teal));
+  color: white;
+}
+.result-hero .value {
+  font-size: 52px;
+  font-weight: 700;
+  letter-spacing: -2px;
+  line-height: 1.1;
+}
+.result-hero .unit { font-size: 18px; opacity: 0.8; font-weight: 400; }
+.result-hero .label { font-size: 13px; opacity: 0.7; margin-top: 4px; }
+
+.result-section { padding: 16px 20px; border-bottom: 1px solid var(--fwi-border); }
+.result-section:last-child { border-bottom: none; }
+.result-section h3 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--fwi-muted);
+  margin-bottom: 10px;
+}
+.data-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.data-item {
+  padding: 8px 10px;
+  background: var(--fwi-bg);
+  border-radius: 6px;
+}
+.data-item .data-label { font-size: 11px; color: var(--fwi-muted); }
+.data-item .data-value { font-size: 14px; font-weight: 600; color: var(--fwi-text); font-family: 'SF Mono', 'Consolas', monospace; }
+
+/* ── Band chart ── */
+.band-chart { margin-top: 8px; }
+.band-bar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.band-bar-label { font-size: 11px; width: 38px; text-align: right; color: var(--fwi-muted); font-family: monospace; }
+.band-bar-track { flex: 1; height: 16px; background: var(--fwi-bg); border-radius: 3px; overflow: hidden; position: relative; }
+.band-bar-fill { height: 100%; border-radius: 3px; transition: width 0.5s ease; }
+.band-bar-val { font-size: 10px; width: 50px; font-family: monospace; color: var(--fwi-muted); }
+
+/* ── Feature importance ── */
+.feat-row { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; font-size: 12px; }
+.feat-name { width: 160px; text-align: right; font-family: monospace; color: var(--fwi-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.feat-bar-track { flex: 1; height: 12px; background: var(--fwi-bg); border-radius: 3px; overflow: hidden; }
+.feat-bar-fill { height: 100%; background: var(--fwi-accent); border-radius: 3px; }
+.feat-val { width: 60px; font-family: monospace; font-size: 11px; color: var(--fwi-muted); }
+
+/* ── Map ── */
+#map { height: 200px; border-radius: 0; }
+
+/* ── Loading ── */
+.loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  color: var(--fwi-muted);
+}
+.spinner {
+  width: 40px; height: 40px;
+  border: 3px solid var(--fwi-border);
+  border-top-color: var(--fwi-teal);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-bottom: 16px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-text { font-size: 14px; }
+.loading-sub { font-size: 12px; color: var(--fwi-muted); margin-top: 4px; opacity: 0.7; }
+
+/* ── Empty state ── */
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--fwi-muted);
+}
+.empty-state .icon { font-size: 48px; margin-bottom: 12px; opacity: 0.5; }
+.empty-state p { font-size: 14px; }
+
+/* ── Error ── */
+.error-box {
+  padding: 16px 20px;
+  background: #fdf2f2;
+  border: 1px solid #f5c6c6;
+  border-radius: 8px;
+  color: var(--fwi-err);
+  margin: 20px;
+  font-size: 14px;
+}
+
+/* ── Footer ── */
+footer {
+  text-align: center;
+  padding: 24px;
+  color: var(--fwi-muted);
+  font-size: 12px;
+}
+footer a { color: var(--fwi-teal); text-decoration: none; }
+</style>
+</head>
+<body>
+
+<header>
+  <svg class="logo-fish" viewBox="0 0 100 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M75 30C75 30 85 15 95 15C95 15 80 5 65 10C60 11.5 52 16 48 22C44 16 36 11.5 31 10C16 5 1 15 1 15C11 15 21 30 21 30C21 30 11 45 1 45C1 45 16 55 31 50C36 48.5 44 44 48 38C52 44 60 48.5 65 50C80 55 95 45 95 45C85 45 75 30 75 30Z" fill="white" fill-opacity="0.9"/>
+    <circle cx="72" cy="25" r="3" fill="rgba(26,122,122,0.8)"/>
+    <path d="M48 22C46 26 46 34 48 38" stroke="white" stroke-opacity="0.5" stroke-width="1"/>
+  </svg>
+  <div>
+    <h1>Fish Welfare Initiative</h1>
+    <div class="subtitle">Chlorophyll-a Satellite Prediction Tool</div>
+  </div>
+</header>
+
+<div class="container">
+  <div class="grid">
+
+    <!-- LEFT: Input Panel -->
+    <div>
+      <div class="card">
+        <div class="card-header">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          Prediction Input
+        </div>
+        <div class="card-body">
+          <div class="form-group">
+            <label>Pond</label>
+            <select id="pond-select">
+              <option value="">Loading ponds...</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Target Date</label>
+            <input type="date" id="date-input" />
+          </div>
+          <button class="btn" id="predict-btn" disabled>
+            Run Prediction
+          </button>
+          <div class="pond-info" id="pond-info" style="display:none">
+            <div id="pond-details"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Map card -->
+      <div class="card" style="margin-top: 16px;">
+        <div class="card-header">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+          Pond Location
+        </div>
+        <div id="map"></div>
+      </div>
+    </div>
+
+    <!-- RIGHT: Results Panel -->
+    <div>
+      <div class="card" id="results-card">
+        <div class="empty-state" id="empty-state">
+          <div class="icon">🛰️</div>
+          <p>Select a pond and date, then click <strong>Run Prediction</strong></p>
+          <p style="margin-top:8px; font-size:12px; opacity:0.7">
+            The model will find the most recent Sentinel-2 flyover before your selected date,<br>
+            retrieve the satellite imagery and weather data, and predict chlorophyll-a concentration.
+          </p>
+        </div>
+
+        <div id="loading-state" style="display:none">
+          <div class="loading">
+            <div class="spinner"></div>
+            <div class="loading-text">Running prediction...</div>
+            <div class="loading-sub" id="loading-step">Searching for Sentinel-2 imagery</div>
+          </div>
+        </div>
+
+        <div id="result-state" style="display:none">
+          <!-- Hero prediction -->
+          <div class="result-hero">
+            <div class="label">Predicted Chlorophyll-a</div>
+            <div class="value"><span id="pred-value">—</span> <span class="unit">µg/L</span></div>
+            <div class="label" id="pred-date-info"></div>
+          </div>
+
+          <!-- Satellite info -->
+          <div class="result-section">
+            <h3>Sentinel-2 Satellite Data</h3>
+            <div class="data-grid" id="sat-grid"></div>
+          </div>
+
+          <!-- Spectral bands -->
+          <div class="result-section">
+            <h3>Spectral Band Reflectance (3×3 Median)</h3>
+            <div class="band-chart" id="band-chart"></div>
+          </div>
+
+          <!-- Weather -->
+          <div class="result-section">
+            <h3>Weather Context</h3>
+            <div class="data-grid" id="weather-grid"></div>
+          </div>
+
+          <!-- Feature importance -->
+          <div class="result-section">
+            <h3>Top Model Features (by importance)</h3>
+            <div id="feat-chart"></div>
+          </div>
+        </div>
+
+        <div id="error-state" style="display:none">
+          <div class="error-box" id="error-msg"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <a href="https://www.fishwelfareinitiative.org" target="_blank">fishwelfareinitiative.org</a>
+  &nbsp;·&nbsp; Chl-a model by Sol White &nbsp;·&nbsp; XGBoost + Sentinel-2 L1C + Open-Meteo
+</footer>
+
+<script>
+// ── State ──
+let ponds = [];
+let map = null;
+let marker = null;
+
+// ── Init ──
+document.addEventListener('DOMContentLoaded', async () => {
+  // Set date bounds
+  const dateInput = document.getElementById('date-input');
+  dateInput.min = '2026-01-01';
+  const today = new Date().toISOString().split('T')[0];
+  dateInput.max = today;
+  dateInput.value = today;
+
+  // Load ponds
+  try {
+    const res = await fetch('/api/ponds');
+    ponds = await res.json();
+    populatePondSelect();
+  } catch (e) {
+    console.error('Failed to load ponds:', e);
+  }
+
+  // Init map
+  map = L.map('map').setView([15.5, 80.6], 7);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap',
+    maxZoom: 18,
+  }).addTo(map);
+
+  // Event listeners
+  document.getElementById('pond-select').addEventListener('change', onPondChange);
+  document.getElementById('predict-btn').addEventListener('click', runPrediction);
+});
+
+function populatePondSelect() {
+  const sel = document.getElementById('pond-select');
+  sel.innerHTML = '<option value="">— Select a pond —</option>';
+
+  // Group by region
+  const regions = {};
+  ponds.forEach(p => {
+    if (!regions[p.region]) regions[p.region] = [];
+    regions[p.region].push(p);
+  });
+
+  for (const [region, regionPonds] of Object.entries(regions).sort()) {
+    const group = document.createElement('optgroup');
+    group.label = `${region} (${regionPonds.length} ponds)`;
+    regionPonds.sort((a, b) => a.id.localeCompare(b.id)).forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p.id;
+      const village = p.village ? ` — ${p.village}` : '';
+      opt.textContent = `${p.id}${village}`;
+      group.appendChild(opt);
+    });
+    sel.appendChild(group);
+  }
+
+  document.getElementById('predict-btn').disabled = false;
+}
+
+function onPondChange() {
+  const id = document.getElementById('pond-select').value;
+  const info = document.getElementById('pond-info');
+  const details = document.getElementById('pond-details');
+
+  if (!id) {
+    info.style.display = 'none';
+    return;
+  }
+
+  const p = ponds.find(x => x.id === id);
+  if (!p) return;
+
+  info.style.display = 'block';
+  details.innerHTML = `
+    <strong>${p.id}</strong><br>
+    ${p.village ? `Village: ${p.village}<br>` : ''}
+    ${p.farmer ? `Farmer: ${p.farmer}<br>` : ''}
+    Region: ${p.region}<br>
+    <span class="coord">${p.lat.toFixed(6)}°N, ${p.lon.toFixed(6)}°E</span>
+  `;
+
+  // Update map
+  if (marker) map.removeLayer(marker);
+  marker = L.circleMarker([p.lat, p.lon], {
+    radius: 10,
+    fillColor: '#1a7a7a',
+    fillOpacity: 0.8,
+    color: '#0d3b3b',
+    weight: 2,
+  }).addTo(map).bindPopup(`<strong>${p.id}</strong><br>${p.lat.toFixed(6)}, ${p.lon.toFixed(6)}`);
+  map.setView([p.lat, p.lon], 14);
+}
+
+async function runPrediction() {
+  const pondId = document.getElementById('pond-select').value;
+  const date = document.getElementById('date-input').value;
+
+  if (!pondId || !date) {
+    alert('Please select a pond and date.');
+    return;
+  }
+
+  // Show loading
+  showState('loading');
+  const btn = document.getElementById('predict-btn');
+  btn.disabled = true;
+  btn.textContent = 'Running...';
+
+  // Animate loading steps
+  const steps = [
+    'Searching for Sentinel-2 imagery...',
+    'Extracting spectral band values...',
+    'Fetching weather data from Open-Meteo...',
+    'Running XGBoost model...',
+  ];
+  let stepIdx = 0;
+  const stepInterval = setInterval(() => {
+    stepIdx = Math.min(stepIdx + 1, steps.length - 1);
+    document.getElementById('loading-step').textContent = steps[stepIdx];
+  }, 5000);
+
+  try {
+    const res = await fetch('/api/predict', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pond_id: pondId, date }),
+    });
+    clearInterval(stepInterval);
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Prediction failed');
+    }
+
+    const data = await res.json();
+    displayResults(data, date);
+  } catch (e) {
+    clearInterval(stepInterval);
+    document.getElementById('error-msg').textContent = e.message;
+    showState('error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Run Prediction';
+  }
+}
+
+function showState(state) {
+  ['empty', 'loading', 'result', 'error'].forEach(s => {
+    const el = document.getElementById(s + '-state');
+    if (el) el.style.display = s === state ? 'block' : 'none';
+  });
+}
+
+function displayResults(data, targetDate) {
+  showState('result');
+
+  // Hero
+  document.getElementById('pred-value').textContent = data.prediction.toFixed(1);
+  const daysBefore = data.satellite.days_before_target;
+  document.getElementById('pred-date-info').textContent =
+    `Based on Sentinel-2 flyover on ${data.satellite.acq_time.split(' ')[0]} (${daysBefore} day${daysBefore !== 1 ? 's' : ''} before ${targetDate})`;
+
+  // Satellite grid
+  const satGrid = document.getElementById('sat-grid');
+  satGrid.innerHTML = dataItems([
+    ['Image ID', data.satellite.image_id || '—'],
+    ['Acquisition Time', data.satellite.acq_time || '—'],
+    ['Spacecraft', data.satellite.spacecraft || '—'],
+    ['Scene Cloud %', data.satellite.cloud_pct != null ? data.satellite.cloud_pct.toFixed(1) + '%' : '—'],
+    ['Cloud Prob @ Pond', data.satellite.cp_probability != null ? data.satellite.cp_probability + '%' : '—'],
+    ['CP Source', data.satellite.cp_source || '—'],
+    ['NDWI', data.ndwi != null ? data.ndwi.toFixed(4) : '—'],
+    ['S2 Images Available', data.satellite.days_before_target + 'd window'],
+  ]);
+
+  // Band chart
+  const bandChart = document.getElementById('band-chart');
+  const bandOrder = ['B1','B2','B3','B4','B5','B6','B7','B8','B8A','B9','B10','B11','B12'];
+  const bandColors = {
+    B1:'#5b21b6', B2:'#3b82f6', B3:'#22c55e', B4:'#ef4444',
+    B5:'#f97316', B6:'#eab308', B7:'#a3e635', B8:'#14b8a6',
+    B8A:'#06b6d4', B9:'#8b5cf6', B10:'#ec4899', B11:'#f43f5e', B12:'#be123c'
+  };
+  let bandHtml = '';
+  bandOrder.forEach(b => {
+    const key = `s2_med3_${b}_median`;
+    const val = data.bands[key];
+    if (val == null) return;
+    const pct = Math.min(val * 100 / 0.5, 100);
+    bandHtml += `
+      <div class="band-bar-row">
+        <span class="band-bar-label">${b}</span>
+        <div class="band-bar-track">
+          <div class="band-bar-fill" style="width:${pct}%; background:${bandColors[b]||'#1a7a7a'}"></div>
+        </div>
+        <span class="band-bar-val">${val.toFixed(4)}</span>
+      </div>`;
+  });
+  bandChart.innerHTML = bandHtml;
+
+  // Weather grid
+  const wg = document.getElementById('weather-grid');
+  const w = data.weather;
+  wg.innerHTML = dataItems([
+    ['Temp (3-day avg)', w.t2m_3d != null ? w.t2m_3d.toFixed(1) + ' °C' : '—'],
+    ['Temp (instant)', w.t2m_inst != null ? w.t2m_inst.toFixed(1) + ' °C' : '—'],
+    ['Humidity (3-day avg)', w.rh_3d != null ? w.rh_3d.toFixed(1) + '%' : '—'],
+    ['Humidity (instant)', w.rh_inst != null ? w.rh_inst.toFixed(1) + '%' : '—'],
+    ['Cloud Cover (3-day)', w.cloud_3d != null ? w.cloud_3d.toFixed(1) + '%' : '—'],
+    ['Cloud Cover (instant)', w.cloud_inst != null ? w.cloud_inst.toFixed(1) + '%' : '—'],
+    ['Wind Speed (3-day)', w.ws10_3d != null ? w.ws10_3d.toFixed(1) + ' m/s' : '—'],
+    ['Wind Speed (instant)', w.ws10_inst != null ? w.ws10_inst.toFixed(1) + ' m/s' : '—'],
+    ['Precip (3-day sum)', w.precip_3d_sum != null ? w.precip_3d_sum.toFixed(1) + ' mm' : '—'],
+    ['Solar Rad (3-day sum)', w.swrad_3d_sum != null ? w.swrad_3d_sum.toFixed(1) + ' MJ/m²' : '—'],
+  ]);
+
+  // Feature importance
+  const fc = document.getElementById('feat-chart');
+  const feats = data.feature_importance || [];
+  if (feats.length === 0) {
+    fc.innerHTML = '<div style="color:var(--fwi-muted);font-size:13px">No feature data</div>';
+  } else {
+    const maxImp = Math.max(...feats.map(f => f.importance));
+    let fhtml = '';
+    feats.forEach(f => {
+      const pct = (f.importance / maxImp) * 100;
+      fhtml += `
+        <div class="feat-row">
+          <span class="feat-name" title="${f.name}">${f.name}</span>
+          <div class="feat-bar-track"><div class="feat-bar-fill" style="width:${pct}%"></div></div>
+          <span class="feat-val">${f.value}</span>
+        </div>`;
+    });
+    fc.innerHTML = fhtml;
+  }
+}
+
+function dataItems(pairs) {
+  return pairs.map(([label, value]) => `
+    <div class="data-item">
+      <div class="data-label">${label}</div>
+      <div class="data-value">${value}</div>
+    </div>
+  `).join('');
+}
+</script>
+</body>
+</html>
