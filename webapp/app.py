@@ -113,6 +113,10 @@ def get_ponds():
         })
     return jsonify(ponds)
 
+@app.route("/api/version")
+def version():
+    return jsonify({"version": "2026-02-27-v6-thumb-debug"})
+
 @app.route("/api/predict", methods=["POST"])
 def predict():
     try:
@@ -178,6 +182,7 @@ def predict():
                 "days_before_target": round((target_date - s2_date).total_seconds() / 86400, 1),
                 "thumb_url": s2_meta.get("thumb_url"),
                 "thumb_bounds": s2_meta.get("thumb_bounds"),
+                "thumb_error": s2_meta.get("thumb_error"),
             },
             "bands": {k: round(v, 6) if v is not None else None for k, v in s2_data.items() if k.startswith("s2_med3_")},
             "ndwi": round(s2_data.get("s2_med3_NDWI", 0), 4),
