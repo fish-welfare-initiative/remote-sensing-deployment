@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Chl-a Predictor — Fish Welfare Initiative</title>
+<title>Water Quality Predictor — Fish Welfare Initiative</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <style>
@@ -370,12 +370,12 @@ footer a { color: var(--fwi-teal); text-decoration: none; }
   <img class="logo-fish" src="/static/favicon.png" alt="FWI Logo" style="border-radius:8px; background:white; padding:2px;">
   <div>
     <h1>Fish Welfare Initiative</h1>
-    <div class="subtitle">Chlorophyll-a Satellite Prediction Tool</div>
+    <div class="subtitle">Water Quality Satellite Prediction Tool</div>
   </div>
 </header>
 
 <div style="background:#fdf0ef; border-bottom:2px solid #c0392b; padding:10px 32px; font-size:13px; color:#8b1a1a; line-height:1.45;">
-  <strong style="color:#c0392b;">Disclaimer:</strong> This app is still under testing and remember that Sol's models only explain 59% of Chl-a variance in the pond center, as validated by our Innovation Challenge.v2 data. We will continue testing and developing this technology. -HK
+  <strong style="color:#c0392b;">Disclaimer:</strong> This app is still under testing. Sol's models explain 59% of Chl-a variance (R&sup2;=0.59) and 23% of Dissolved Oxygen variance (R&sup2;=0.23) in the pond center, as validated by our Innovation Challenge.v2 data. We will continue testing and developing this technology. -HK
 </div>
 
 <!-- Tab bar -->
@@ -451,8 +451,16 @@ footer a { color: var(--fwi-teal); text-decoration: none; }
 
           <div id="result-state" style="display:none">
             <div class="result-hero">
-              <div class="label">Predicted Chlorophyll-a</div>
-              <div class="value"><span id="pred-value">—</span> <span class="unit">&micro;g/L</span></div>
+              <div style="display:flex;gap:24px;justify-content:center;flex-wrap:wrap;">
+                <div style="text-align:center;flex:1;min-width:180px;">
+                  <div class="label">Predicted Chlorophyll-a <span style="font-size:11px;opacity:0.7;background:rgba(255,255,255,0.15);padding:2px 6px;border-radius:4px;">R&sup2;=0.59</span></div>
+                  <div class="value"><span id="pred-chla">—</span> <span class="unit">&micro;g/L</span></div>
+                </div>
+                <div style="text-align:center;flex:1;min-width:180px;">
+                  <div class="label">Predicted Dissolved Oxygen <span style="font-size:11px;opacity:0.7;background:rgba(255,255,255,0.15);padding:2px 6px;border-radius:4px;">R&sup2;=0.23</span></div>
+                  <div class="value"><span id="pred-do">—</span> <span class="unit">mg/L</span></div>
+                </div>
+              </div>
               <div class="label" id="pred-date-info"></div>
             </div>
             <div class="result-section">
@@ -468,8 +476,12 @@ footer a { color: var(--fwi-teal); text-decoration: none; }
               <div class="data-grid" id="weather-grid"></div>
             </div>
             <div class="result-section">
-              <h3>Top Model Features (by importance)</h3>
-              <div id="feat-chart"></div>
+              <h3>Top Chl-a Features (by importance)</h3>
+              <div id="feat-chart-chla"></div>
+            </div>
+            <div class="result-section">
+              <h3>Top DO Features (by importance)</h3>
+              <div id="feat-chart-do"></div>
             </div>
           </div>
 
@@ -624,7 +636,7 @@ footer a { color: var(--fwi-teal); text-decoration: none; }
 
 <footer>
   <a href="https://www.fishwelfareinitiative.org" target="_blank">fishwelfareinitiative.org</a>
-  &nbsp;&middot;&nbsp; Chl-a model by Sol White &nbsp;&middot;&nbsp; XGBoost + Sentinel-2 L1C + Open-Meteo
+  &nbsp;&middot;&nbsp; Chl-a &amp; DO models by Sol White &nbsp;&middot;&nbsp; XGBoost + Sentinel-2 L1C + Open-Meteo
 </footer>
 
 <script>
@@ -636,6 +648,10 @@ let map = null;
 let marker = null;
 let batchResults = [];
 let uploadedRequests = [];
+let s2Overlay = null;
+let layerControl = null;
+let osmLayer = null;
+let satelliteLayer = null;
 
 // ══════════════════════════════════════════════════════
 // TABS
@@ -679,14 +695,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Init map
   map = L.map('map').setView([15.5, 80.6], 7);
-  const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; OpenStreetMap', maxZoom: 19,
   });
-  const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+  satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
     attribution: '&copy; Esri', maxZoom: 19,
   });
-  satellite.addTo(map);
-  L.control.layers({'Street': osm, 'Satellite': satellite}, null, {position: 'topright'}).addTo(map);
+  satelliteLayer.addTo(map);
+  layerControl = L.control.layers({'Street': osmLayer, 'Satellite': satelliteLayer}, null, {position: 'topright'}).addTo(map);
 
   // Event listeners
   document.getElementById('pond-select').addEventListener('change', onPondChange);
@@ -781,7 +797,13 @@ function showState(state) {
 
 function displayResults(data, targetDate) {
   showState('result');
-  document.getElementById('pred-value').textContent = Math.round(data.prediction);
+
+  // Predictions — use new keys with fallback to legacy
+  const chla = data.prediction_chla != null ? data.prediction_chla : data.prediction;
+  const doVal = data.prediction_do;
+  document.getElementById('pred-chla').textContent = Math.round(chla);
+  document.getElementById('pred-do').textContent = doVal != null ? doVal.toFixed(1) : '—';
+
   const daysBefore = data.satellite.days_before_target;
   document.getElementById('pred-date-info').textContent =
     `Based on Sentinel-2 flyover on ${data.satellite.acq_time.split(' ')[0]} (${daysBefore} day${daysBefore !== 1 ? 's' : ''} before ${targetDate})`;
@@ -822,8 +844,36 @@ function displayResults(data, targetDate) {
     ['Solar Rad (3-day sum)', w.swrad_3d_sum != null ? w.swrad_3d_sum.toFixed(1) + ' MJ/m²' : '—'],
   ]);
 
-  const feats = data.feature_importance || [];
-  const fc = document.getElementById('feat-chart');
+  // Feature importance — Chl-a
+  renderFeatureChart(data.feature_importance_chla || data.feature_importance || [], 'feat-chart-chla');
+  // Feature importance — DO
+  renderFeatureChart(data.feature_importance_do || [], 'feat-chart-do');
+
+  // S2 true-color overlay toggle
+  if (s2Overlay) { map.removeLayer(s2Overlay); s2Overlay = null; }
+  if (layerControl) map.removeControl(layerControl);
+
+  if (data.satellite.thumb_url && data.satellite.thumb_bounds) {
+    s2Overlay = L.imageOverlay(data.satellite.thumb_url, data.satellite.thumb_bounds, {
+      opacity: 1,
+      attribution: 'Sentinel-2 &copy; ESA'
+    });
+    layerControl = L.control.layers(
+      {'Street': osmLayer, 'Satellite': satelliteLayer},
+      {'Sentinel-2 Capture': s2Overlay},
+      {position: 'topright', collapsed: false}
+    ).addTo(map);
+  } else {
+    layerControl = L.control.layers(
+      {'Street': osmLayer, 'Satellite': satelliteLayer},
+      null,
+      {position: 'topright'}
+    ).addTo(map);
+  }
+}
+
+function renderFeatureChart(feats, elementId) {
+  const fc = document.getElementById(elementId);
   if (!feats.length) { fc.innerHTML = '<div style="color:var(--fwi-muted);font-size:13px">No feature data</div>'; return; }
   const maxImp = Math.max(...feats.map(f => f.importance));
   fc.innerHTML = feats.map(f => {

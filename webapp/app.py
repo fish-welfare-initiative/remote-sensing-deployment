@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-FWI Chl-a Prediction Web App
-Flask backend serving the prediction API and frontend.
+FWI Water Quality Prediction Web App
+Flask backend serving the Chl-a and DO prediction API and frontend.
 """
 import os, sys, json, asyncio, traceback
 import numpy as np
@@ -23,20 +23,34 @@ app = Flask(__name__, static_folder="static")
 # ── Paths ──
 # BASE_DIR works both locally (parent of webapp/) and in Docker (/app)
 BASE_DIR = Path(os.environ.get("APP_BASE_DIR", str(Path(__file__).resolve().parent.parent)))
-MODEL_PATH = str(BASE_DIR / "models" / "xgb_chla.joblib")
+CHLA_MODEL_PATH = str(BASE_DIR / "models" / "xgb_chla.joblib")
+DO_MODEL_PATH = str(BASE_DIR / "models" / "xgb_do.joblib")
 ARA_KEY_PATH = str(BASE_DIR / "2026 Github ARA Pond IDs Key.csv")
 
 # ── Load pond data at startup ──
 PONDS_DF = pd.read_csv(ARA_KEY_PATH)
 PONDS_WITH_GPS = PONDS_DF[PONDS_DF["latitude"].notna()].copy()
 
-# ── Load model at startup ──
-BUNDLE = joblib.load(MODEL_PATH)
-MODEL = BUNDLE["model"]
-RAW_INPUTS = BUNDLE["raw_inputs"]
-FEATURE_NAMES = BUNDLE["feature_names"]
-TRANSFORM = BUNDLE.get("transform", "none")
-BEST_ITERATION = BUNDLE.get("best_iteration", None)
+# ── Load Chl-a model at startup ──
+CHLA_BUNDLE = joblib.load(CHLA_MODEL_PATH)
+CHLA_MODEL = CHLA_BUNDLE["model"]
+RAW_INPUTS = CHLA_BUNDLE["raw_inputs"]          # shared — both models use same inputs
+CHLA_FEATURE_NAMES = CHLA_BUNDLE["feature_names"]
+CHLA_TRANSFORM = CHLA_BUNDLE.get("transform", "none")
+CHLA_BEST_ITER = CHLA_BUNDLE.get("best_iteration", None)
+
+# ── Load DO model at startup ──
+DO_BUNDLE = joblib.load(DO_MODEL_PATH)
+DO_MODEL = DO_BUNDLE["model"]
+DO_FEATURE_NAMES = DO_BUNDLE["feature_names"]
+DO_TRANSFORM = DO_BUNDLE.get("transform", "none")
+DO_BEST_ITER = DO_BUNDLE.get("best_iteration", None)
+
+# Legacy aliases so batch code doesn't break
+MODEL = CHLA_MODEL
+FEATURE_NAMES = CHLA_FEATURE_NAMES
+TRANSFORM = CHLA_TRANSFORM
+BEST_ITERATION = CHLA_BEST_ITER
 
 # ── GEE init ──
 EE_INITIALIZED = False
@@ -127,12 +141,17 @@ def predict():
         s2_date = pd.Timestamp(s2_meta["acq_time"], tz="UTC")
         weather = get_weather(lat, lon, s2_date)
 
-        # Step 3: Build feature row and predict
-        features = build_feature_row(s2_data, s2_meta, weather)
-        prediction = run_model(features)
+        # Step 3: Build feature rows and predict both models
+        features_chla = build_feature_row(s2_data, s2_meta, weather, CHLA_FEATURE_NAMES)
+        features_do = build_feature_row(s2_data, s2_meta, weather, DO_FEATURE_NAMES)
+
+        chla_pred = run_model(features_chla, CHLA_MODEL, CHLA_BEST_ITER, CHLA_TRANSFORM)
+        do_pred = run_model(features_do, DO_MODEL, DO_BEST_ITER, DO_TRANSFORM)
 
         return jsonify({
-            "prediction": round(float(prediction)),
+            "prediction_chla": round(float(chla_pred)),
+            "prediction_do": round(float(do_pred), 1),
+            "prediction": round(float(chla_pred)),  # backward compat for batch
             "pond": {
                 "id": pond_id,
                 "lat": lat,
@@ -165,7 +184,9 @@ def predict():
                 "cloud_inst": weather.get("cloud_inst"),
                 "ws10_inst": weather.get("ws10_inst"),
             },
-            "feature_importance": get_top_features(features),
+            "feature_importance_chla": get_top_features(features_chla, CHLA_MODEL, CHLA_FEATURE_NAMES),
+            "feature_importance_do": get_top_features(features_do, DO_MODEL, DO_FEATURE_NAMES),
+            "feature_importance": get_top_features(features_chla, CHLA_MODEL, CHLA_FEATURE_NAMES),  # backward compat
         })
     except Exception as e:
         traceback.print_exc()
@@ -227,8 +248,8 @@ def batch_predict():
     reqs = data.get("requests", [])
     if not reqs:
         return jsonify({"error": "No requests provided"}), 400
-    if len(reqs) > 500:
-        return jsonify({"error": "Maximum 500 predictions per batch"}), 400
+    if len(reqs) > 5000:
+        return jsonify({"error": "Maximum 5000 predictions per batch"}), 400
 
     batch_id = str(uuid.uuid4())[:8]
     _batch_jobs[batch_id] = {
@@ -534,6 +555,26 @@ def find_recent_s2(lon, lat, target_date, max_days_back=30):
         "candidates": n,
     }
 
+    # Generate true-color thumbnail for map overlay
+    try:
+        thumb_region = pt.buffer(500)  # 500m around pond → ~1km × 1km
+        thumb_url = (s2.select(["B4", "B3", "B2"])
+                     .divide(10000.0)
+                     .visualize(min=0, max=0.3)
+                     .getThumbURL({
+                         "dimensions": 512,
+                         "region": thumb_region,
+                         "crs": "EPSG:4326",
+                         "format": "png",
+                     }))
+        bounds_coords = thumb_region.bounds().getInfo()["coordinates"][0]
+        sw = [bounds_coords[0][1], bounds_coords[0][0]]
+        ne = [bounds_coords[2][1], bounds_coords[2][0]]
+        meta["thumb_url"] = thumb_url
+        meta["thumb_bounds"] = [sw, ne]
+    except Exception:
+        pass  # thumbnail is optional; prediction still works
+
     return s2_data, meta
 
 
@@ -653,31 +694,48 @@ def get_weather(lat, lon, s2_date):
 # MODEL
 # ══════════════════════════════════════════════════════════════
 
-def build_feature_row(s2_data, s2_meta, weather):
+def build_feature_row(s2_data, s2_meta, weather, feature_names=None):
+    """Build a one-row DataFrame aligned to a model's expected features.
+    If feature_names is None, uses CHLA_FEATURE_NAMES (backward compat).
+    """
+    if feature_names is None:
+        feature_names = CHLA_FEATURE_NAMES
     row = {}
     row.update(s2_data)
     row.update(weather)
     df = pd.DataFrame([row])
     X = pd.get_dummies(df.reindex(columns=RAW_INPUTS), drop_first=False)
-    X = X.reindex(columns=FEATURE_NAMES, fill_value=0)
+    X = X.reindex(columns=feature_names, fill_value=0)
     return X
 
-def run_model(X):
-    if BEST_ITERATION is not None:
+def run_model(X, model=None, best_iteration=None, transform=None):
+    """Run prediction with a given model. Falls back to Chl-a globals for backward compat."""
+    if model is None:
+        model = CHLA_MODEL
+    if best_iteration is None and model is CHLA_MODEL:
+        best_iteration = CHLA_BEST_ITER
+    if transform is None and model is CHLA_MODEL:
+        transform = CHLA_TRANSFORM
+
+    if best_iteration is not None:
         try:
-            yhat = MODEL.predict(X, iteration_range=(0, BEST_ITERATION + 1))
+            yhat = model.predict(X, iteration_range=(0, best_iteration + 1))
         except TypeError:
-            yhat = MODEL.predict(X)
+            yhat = model.predict(X)
     else:
-        yhat = MODEL.predict(X)
-    if TRANSFORM == "log1p":
+        yhat = model.predict(X)
+    if transform == "log1p":
         yhat = np.expm1(yhat)
     return yhat[0]
 
-def get_top_features(X):
+def get_top_features(X, model=None, feature_names=None):
     """Get top 10 features by importance for display."""
-    importances = MODEL.feature_importances_
-    feat_imp = sorted(zip(FEATURE_NAMES, importances), key=lambda x: -x[1])[:10]
+    if model is None:
+        model = CHLA_MODEL
+    if feature_names is None:
+        feature_names = CHLA_FEATURE_NAMES
+    importances = model.feature_importances_
+    feat_imp = sorted(zip(feature_names, importances), key=lambda x: -x[1])[:10]
     result = []
     for name, imp in feat_imp:
         val = float(X[name].iloc[0]) if name in X.columns else 0
