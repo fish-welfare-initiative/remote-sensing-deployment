@@ -460,7 +460,8 @@ def find_recent_s2(lon, lat, target_date, max_days_back=30):
     if n == 0:
         return None
 
-    s2 = ee.Image(col.first()).clip(aoi)
+    s2_raw = ee.Image(col.first())       # unclipped — used for thumbnail
+    s2 = s2_raw.clip(aoi)
 
     # Extract properties
     keep = ["system:index", "system:time_start", "CLOUDY_PIXEL_PERCENTAGE",
@@ -560,7 +561,7 @@ def find_recent_s2(lon, lat, target_date, max_days_back=30):
     # Generate true-color thumbnail for map overlay
     try:
         thumb_region = pt.buffer(500)  # 500m around pond → ~1km × 1km
-        thumb_url = (s2.select(["B4", "B3", "B2"])
+        thumb_url = (s2_raw.select(["B4", "B3", "B2"])
                      .divide(10000.0)
                      .visualize(min=0, max=0.3)
                      .getThumbURL({
