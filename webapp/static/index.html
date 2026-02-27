@@ -47,8 +47,35 @@ header {
 header h1 { font-size: 22px; font-weight: 600; letter-spacing: -0.3px; }
 header .subtitle { font-size: 13px; opacity: 0.8; margin-top: 2px; }
 
+/* ── Tabs ── */
+.tab-bar {
+  max-width: 1200px; margin: 0 auto; padding: 16px 24px 0;
+  display: flex; gap: 4px;
+}
+.tab-btn {
+  padding: 10px 24px;
+  background: var(--fwi-white);
+  border: 1px solid var(--fwi-border);
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  font-size: 14px; font-weight: 600;
+  color: var(--fwi-muted);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.tab-btn:hover { color: var(--fwi-teal); }
+.tab-btn.active {
+  background: var(--fwi-bg);
+  color: var(--fwi-teal);
+  border-color: var(--fwi-accent);
+  border-bottom: 2px solid var(--fwi-bg);
+  margin-bottom: -1px;
+}
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
 /* ── Layout ── */
-.container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+.container { max-width: 1200px; margin: 0 auto; padding: 0 24px 24px; }
 .grid { display: grid; grid-template-columns: 380px 1fr; gap: 24px; align-items: start; }
 @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
 
@@ -102,8 +129,7 @@ select:focus, input:focus {
 .form-group { margin-bottom: 18px; }
 
 .btn {
-  width: 100%;
-  padding: 12px;
+  padding: 12px 24px;
   background: linear-gradient(135deg, var(--fwi-teal), var(--fwi-accent));
   color: white;
   border: none;
@@ -114,9 +140,30 @@ select:focus, input:focus {
   transition: all 0.2s;
   letter-spacing: 0.3px;
 }
+.btn-full { width: 100%; }
 .btn:hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(26,122,122,0.3); }
 .btn:active { transform: translateY(0); }
 .btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+.btn-outline {
+  background: var(--fwi-white);
+  color: var(--fwi-teal);
+  border: 1.5px solid var(--fwi-teal);
+}
+.btn-outline:hover { background: var(--fwi-light); box-shadow: none; transform: none; }
+
+.btn-stop {
+  padding: 5px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fwi-err);
+  background: white;
+  border: 1.5px solid var(--fwi-err);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.btn-stop:hover { background: #fdf0ef; }
 
 .pond-info {
   margin-top: 16px;
@@ -182,7 +229,7 @@ select:focus, input:focus {
 .feat-val { width: 60px; font-family: monospace; font-size: 11px; color: var(--fwi-muted); }
 
 /* ── Map ── */
-#map { height: 200px; border-radius: 0; }
+#map { height: 280px; border-radius: 0; }
 
 /* ── Loading ── */
 .loading {
@@ -202,6 +249,7 @@ select:focus, input:focus {
   margin-bottom: 16px;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 .loading-text { font-size: 14px; }
 .loading-sub { font-size: 12px; color: var(--fwi-muted); margin-top: 4px; opacity: 0.7; }
 
@@ -225,6 +273,87 @@ select:focus, input:focus {
   font-size: 14px;
 }
 
+/* ── Batch ── */
+.batch-layout { display: grid; grid-template-columns: 380px 1fr; gap: 24px; align-items: start; }
+@media (max-width: 900px) { .batch-layout { grid-template-columns: 1fr; } }
+
+.input-toggle { display: flex; gap: 4px; margin-bottom: 16px; }
+.toggle-btn {
+  flex: 1; padding: 8px; border: 1.5px solid var(--fwi-border); background: var(--fwi-white);
+  border-radius: 6px; font-size: 13px; font-weight: 600; color: var(--fwi-muted); cursor: pointer;
+  transition: all 0.15s; text-align: center;
+}
+.toggle-btn.active { border-color: var(--fwi-accent); background: var(--fwi-light); color: var(--fwi-teal); }
+
+.pond-checklist {
+  max-height: 260px; overflow-y: auto; border: 1px solid var(--fwi-border);
+  border-radius: 8px; padding: 6px 0; background: var(--fwi-white);
+}
+.pond-checklist .region-header {
+  padding: 6px 12px; font-size: 11px; font-weight: 700; color: var(--fwi-dark);
+  text-transform: uppercase; letter-spacing: 0.5px; background: var(--fwi-light);
+  display: flex; justify-content: space-between; align-items: center; cursor: pointer;
+  position: sticky; top: 0; z-index: 1;
+}
+.pond-checklist .region-header:hover { background: #d6ebeb; }
+.pond-checklist label.pond-item {
+  display: flex; align-items: center; gap: 8px; padding: 4px 12px; font-size: 13px;
+  cursor: pointer; text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--fwi-text); margin: 0;
+}
+.pond-checklist label.pond-item:hover { background: var(--fwi-light); }
+.pond-checklist input[type="checkbox"] { accent-color: var(--fwi-teal); width: 15px; height: 15px; }
+
+.selected-count { font-size: 12px; color: var(--fwi-muted); margin-top: 6px; }
+
+.upload-zone {
+  border: 2px dashed var(--fwi-border); border-radius: 8px; padding: 32px 20px;
+  text-align: center; color: var(--fwi-muted); cursor: pointer; transition: all 0.2s;
+}
+.upload-zone:hover { border-color: var(--fwi-accent); background: var(--fwi-light); }
+.upload-zone.dragover { border-color: var(--fwi-teal); background: var(--fwi-light); }
+.upload-zone input { display: none; }
+.upload-zone .upload-icon { font-size: 32px; margin-bottom: 8px; opacity: 0.5; }
+.upload-zone p { font-size: 13px; }
+.upload-zone .hint { font-size: 11px; margin-top: 6px; opacity: 0.7; }
+
+.parse-errors { margin-top: 10px; font-size: 12px; color: var(--fwi-err); max-height: 80px; overflow-y: auto; }
+
+.batch-progress {
+  padding: 20px; text-align: center;
+}
+.progress-bar-track {
+  height: 8px; background: var(--fwi-border); border-radius: 4px; overflow: hidden; margin: 12px 0;
+}
+.progress-bar-fill {
+  height: 100%; background: linear-gradient(90deg, var(--fwi-teal), var(--fwi-accent));
+  border-radius: 4px; transition: width 0.3s;
+}
+.progress-text { font-size: 13px; color: var(--fwi-muted); }
+.progress-current { font-size: 12px; color: var(--fwi-muted); opacity: 0.7; margin-top: 4px; }
+
+/* ── Batch results table ── */
+.batch-results-table {
+  width: 100%; border-collapse: collapse; font-size: 13px;
+}
+.batch-results-table th {
+  background: var(--fwi-light); padding: 10px 14px; text-align: left;
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--fwi-muted);
+  border-bottom: 2px solid var(--fwi-border); position: sticky; top: 0; z-index: 1;
+}
+.batch-results-table td {
+  padding: 8px 14px; border-bottom: 1px solid var(--fwi-border);
+  font-family: 'SF Mono', 'Consolas', monospace; font-size: 13px;
+}
+.batch-results-table tr:hover td { background: var(--fwi-light); }
+.batch-results-table .chla-cell { font-weight: 700; color: var(--fwi-dark); font-size: 15px; }
+.batch-results-table .error-cell { color: var(--fwi-err); font-family: inherit; font-style: italic; }
+.batch-table-wrap {
+  max-height: 500px; overflow-y: auto; border: 1px solid var(--fwi-border); border-radius: 8px;
+}
+.batch-actions {
+  display: flex; gap: 8px; margin-top: 12px; justify-content: flex-end;
+}
+
 /* ── Footer ── */
 footer {
   text-align: center;
@@ -238,275 +367,413 @@ footer a { color: var(--fwi-teal); text-decoration: none; }
 <body>
 
 <header>
-  <svg class="logo-fish" viewBox="0 0 100 60" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M75 30C75 30 85 15 95 15C95 15 80 5 65 10C60 11.5 52 16 48 22C44 16 36 11.5 31 10C16 5 1 15 1 15C11 15 21 30 21 30C21 30 11 45 1 45C1 45 16 55 31 50C36 48.5 44 44 48 38C52 44 60 48.5 65 50C80 55 95 45 95 45C85 45 75 30 75 30Z" fill="white" fill-opacity="0.9"/>
-    <circle cx="72" cy="25" r="3" fill="rgba(26,122,122,0.8)"/>
-    <path d="M48 22C46 26 46 34 48 38" stroke="white" stroke-opacity="0.5" stroke-width="1"/>
-  </svg>
+  <img class="logo-fish" src="/static/favicon.png" alt="FWI Logo" style="border-radius:8px; background:white; padding:2px;">
   <div>
     <h1>Fish Welfare Initiative</h1>
     <div class="subtitle">Chlorophyll-a Satellite Prediction Tool</div>
   </div>
 </header>
 
+<div style="background:#fdf0ef; border-bottom:2px solid #c0392b; padding:10px 32px; font-size:13px; color:#8b1a1a; line-height:1.45;">
+  <strong style="color:#c0392b;">Disclaimer:</strong> This app is still under testing and remember that Sol's models only explain 59% of Chl-a variance in the pond center, as validated by our Innovation Challenge.v2 data. We will continue testing and developing this technology. -HK
+</div>
+
+<!-- Tab bar -->
+<div class="tab-bar">
+  <button class="tab-btn active" onclick="switchTab('single')">Single Prediction</button>
+  <button class="tab-btn" onclick="switchTab('batch')">Batch Prediction</button>
+</div>
+
 <div class="container">
-  <div class="grid">
 
-    <!-- LEFT: Input Panel -->
-    <div>
-      <div class="card">
-        <div class="card-header">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-          Prediction Input
+  <!-- ═══════════════════════════════════════ -->
+  <!-- TAB 1: SINGLE PREDICTION              -->
+  <!-- ═══════════════════════════════════════ -->
+  <div id="tab-single" class="tab-panel active">
+    <div class="grid">
+
+      <!-- LEFT: Input Panel -->
+      <div>
+        <div class="card">
+          <div class="card-header">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+            Prediction Input
+          </div>
+          <div class="card-body">
+            <div class="form-group">
+              <label>Pond</label>
+              <select id="pond-select">
+                <option value="">Loading ponds...</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Target Date</label>
+              <input type="date" id="date-input" />
+            </div>
+            <button class="btn btn-full" id="predict-btn" disabled>
+              Run Prediction
+            </button>
+            <div class="pond-info" id="pond-info" style="display:none">
+              <div id="pond-details"></div>
+            </div>
+          </div>
         </div>
-        <div class="card-body">
-          <div class="form-group">
-            <label>Pond</label>
-            <select id="pond-select">
-              <option value="">Loading ponds...</option>
-            </select>
+
+        <!-- Map card -->
+        <div class="card" style="margin-top: 16px;">
+          <div class="card-header">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            Pond Location
           </div>
-          <div class="form-group">
-            <label>Target Date</label>
-            <input type="date" id="date-input" />
-          </div>
-          <button class="btn" id="predict-btn" disabled>
-            Run Prediction
-          </button>
-          <div class="pond-info" id="pond-info" style="display:none">
-            <div id="pond-details"></div>
-          </div>
+          <div id="map"></div>
         </div>
       </div>
 
-      <!-- Map card -->
-      <div class="card" style="margin-top: 16px;">
-        <div class="card-header">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-          Pond Location
-        </div>
-        <div id="map"></div>
-      </div>
-    </div>
-
-    <!-- RIGHT: Results Panel -->
-    <div>
-      <div class="card" id="results-card">
-        <div class="empty-state" id="empty-state">
-          <div class="icon">🛰️</div>
-          <p>Select a pond and date, then click <strong>Run Prediction</strong></p>
-          <p style="margin-top:8px; font-size:12px; opacity:0.7">
-            The model will find the most recent Sentinel-2 flyover before your selected date,<br>
-            retrieve the satellite imagery and weather data, and predict chlorophyll-a concentration.
-          </p>
-        </div>
-
-        <div id="loading-state" style="display:none">
-          <div class="loading">
-            <div class="spinner"></div>
-            <div class="loading-text">Running prediction...</div>
-            <div class="loading-sub" id="loading-step">Searching for Sentinel-2 imagery</div>
-          </div>
-        </div>
-
-        <div id="result-state" style="display:none">
-          <!-- Hero prediction -->
-          <div class="result-hero">
-            <div class="label">Predicted Chlorophyll-a</div>
-            <div class="value"><span id="pred-value">—</span> <span class="unit">µg/L</span></div>
-            <div class="label" id="pred-date-info"></div>
+      <!-- RIGHT: Results Panel -->
+      <div>
+        <div class="card" id="results-card">
+          <div class="empty-state" id="empty-state">
+            <div class="icon">&#x1F6F0;&#xFE0F;</div>
+            <p>Select a pond and date, then click <strong>Run Prediction</strong></p>
+            <p style="margin-top:8px; font-size:12px; opacity:0.7">
+              The model will find the most recent Sentinel-2 flyover on or before your selected date,<br>
+              retrieve the satellite imagery and weather data, and predict chlorophyll-a concentration.
+            </p>
           </div>
 
-          <!-- Satellite info -->
-          <div class="result-section">
-            <h3>Sentinel-2 Satellite Data</h3>
-            <div class="data-grid" id="sat-grid"></div>
+          <div id="loading-state" style="display:none">
+            <div class="loading">
+              <div class="spinner"></div>
+              <div class="loading-text">Running prediction...</div>
+              <div class="loading-sub" id="loading-step">Searching for Sentinel-2 imagery</div>
+            </div>
           </div>
 
-          <!-- Spectral bands -->
-          <div class="result-section">
-            <h3>Spectral Band Reflectance (3×3 Median)</h3>
-            <div class="band-chart" id="band-chart"></div>
+          <div id="result-state" style="display:none">
+            <div class="result-hero">
+              <div class="label">Predicted Chlorophyll-a</div>
+              <div class="value"><span id="pred-value">—</span> <span class="unit">&micro;g/L</span></div>
+              <div class="label" id="pred-date-info"></div>
+            </div>
+            <div class="result-section">
+              <h3>Sentinel-2 Satellite Data</h3>
+              <div class="data-grid" id="sat-grid"></div>
+            </div>
+            <div class="result-section">
+              <h3>Spectral Band Reflectance (3&times;3 Median)</h3>
+              <div class="band-chart" id="band-chart"></div>
+            </div>
+            <div class="result-section">
+              <h3>Weather Context</h3>
+              <div class="data-grid" id="weather-grid"></div>
+            </div>
+            <div class="result-section">
+              <h3>Top Model Features (by importance)</h3>
+              <div id="feat-chart"></div>
+            </div>
           </div>
 
-          <!-- Weather -->
-          <div class="result-section">
-            <h3>Weather Context</h3>
-            <div class="data-grid" id="weather-grid"></div>
+          <div id="error-state" style="display:none">
+            <div class="error-box" id="error-msg"></div>
           </div>
-
-          <!-- Feature importance -->
-          <div class="result-section">
-            <h3>Top Model Features (by importance)</h3>
-            <div id="feat-chart"></div>
-          </div>
-        </div>
-
-        <div id="error-state" style="display:none">
-          <div class="error-box" id="error-msg"></div>
         </div>
       </div>
     </div>
   </div>
+
+  <!-- ═══════════════════════════════════════ -->
+  <!-- TAB 2: BATCH PREDICTION               -->
+  <!-- ═══════════════════════════════════════ -->
+  <div id="tab-batch" class="tab-panel">
+    <div class="batch-layout">
+
+      <!-- LEFT: Batch Input -->
+      <div>
+        <div class="card">
+          <div class="card-header">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+            Batch Input
+          </div>
+          <div class="card-body">
+
+            <!-- Toggle: Select Ponds vs Upload CSV -->
+            <div class="input-toggle">
+              <button class="toggle-btn active" onclick="setBatchMode('select')">Select Ponds</button>
+              <button class="toggle-btn" onclick="setBatchMode('upload')">Upload CSV</button>
+            </div>
+
+            <!-- Mode 1: Select ponds + date range -->
+            <div id="batch-select-mode">
+              <div class="form-group">
+                <label>Ponds</label>
+                <div class="pond-checklist" id="pond-checklist"></div>
+                <div class="selected-count" id="selected-count">0 ponds selected</div>
+              </div>
+              <div class="form-group">
+                <label>Target Date</label>
+                <input type="date" id="batch-date" />
+              </div>
+              <button class="btn btn-full" id="batch-run-btn" onclick="runBatchFromSelect()">
+                Run Batch Prediction
+              </button>
+            </div>
+
+            <!-- Mode 2: Upload CSV -->
+            <div id="batch-upload-mode" style="display:none">
+              <div class="upload-zone" id="upload-zone">
+                <div class="upload-icon">&#x1F4C4;</div>
+                <p>Drop a CSV or Excel file here, or click to browse</p>
+                <p class="hint">Columns: <strong>lat</strong>, <strong>lon</strong>, then dates as column headers</p>
+                <p class="hint" style="margin-top:4px;">Optional: add a <strong>pond_id</strong> column to label each row</p>
+                <input type="file" id="file-input" accept=".csv,.xlsx,.xls" />
+              </div>
+              <div style="margin-top:10px; font-size:12px; display:flex; align-items:center; gap:8px;">
+                <a href="/api/example-csv" download style="color:var(--fwi-teal); text-decoration:underline; cursor:pointer;">Download example CSV</a>
+                <span style="color:var(--fwi-muted);">—</span>
+                <span style="color:var(--fwi-muted); cursor:pointer;" onclick="document.getElementById('csv-preview').style.display=document.getElementById('csv-preview').style.display==='none'?'block':'none'">show format preview</span>
+              </div>
+              <div id="csv-preview" style="display:none; margin-top:8px; font-size:11px; background:#f0f4f4; border-radius:6px; padding:10px; overflow-x:auto;">
+                <table style="border-collapse:collapse; font-family:monospace; font-size:11px; width:100%;">
+                  <tr style="background:#d8e8e8;">
+                    <th style="padding:3px 8px; text-align:left;">pond_id</th>
+                    <th style="padding:3px 8px; text-align:left;">lat</th>
+                    <th style="padding:3px 8px; text-align:left;">lon</th>
+                    <th style="padding:3px 8px; text-align:left;">2025-06-28</th>
+                    <th style="padding:3px 8px; text-align:left;">2025-07-13</th>
+                    <th style="padding:3px 8px; text-align:left;">2025-08-02</th>
+                  </tr>
+                  <tr><td style="padding:3px 8px;">NSR1</td><td style="padding:3px 8px;">16.6627</td><td style="padding:3px 8px;">81.7584</td><td style="padding:3px 8px;"></td><td style="padding:3px 8px;"></td><td style="padding:3px 8px;"></td></tr>
+                  <tr><td style="padding:3px 8px;">NRR1</td><td style="padding:3px 8px;">16.8131</td><td style="padding:3px 8px;">81.3153</td><td style="padding:3px 8px;"></td><td style="padding:3px 8px;"></td><td style="padding:3px 8px;"></td></tr>
+                  <tr><td style="padding:3px 8px;">AKR1</td><td style="padding:3px 8px;">16.5698</td><td style="padding:3px 8px;">80.9228</td><td style="padding:3px 8px;"></td><td style="padding:3px 8px;"></td><td style="padding:3px 8px;"></td></tr>
+                  <tr><td style="padding:3px 8px; color:#888;">(optional)</td><td style="padding:3px 8px;">13.0850</td><td style="padding:3px 8px;">80.2700</td><td style="padding:3px 8px;"></td><td style="padding:3px 8px;"></td><td style="padding:3px 8px;"></td></tr>
+                </table>
+                <p style="margin-top:6px; color:var(--fwi-muted); font-style:italic;">Each row = a location. Each date column = a prediction date. Leave cells empty — they'll all be predicted.</p>
+              </div>
+              <div id="upload-filename" style="margin-top:8px; font-size:13px; color:var(--fwi-teal); display:none;"></div>
+              <div class="parse-errors" id="parse-errors"></div>
+              <div id="upload-summary" style="margin-top:10px; display:none;">
+                <div style="font-size:13px; color:var(--fwi-muted); margin-bottom:10px;" id="upload-summary-text"></div>
+                <button class="btn btn-full" onclick="runBatchFromUpload()">
+                  Run Batch Prediction
+                </button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT: Batch Results -->
+      <div>
+        <div class="card">
+          <div class="card-header">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3h18v18H3z"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/></svg>
+            Results
+          </div>
+
+          <!-- Empty state -->
+          <div id="batch-empty" class="empty-state">
+            <div class="icon">&#x1F4CA;</div>
+            <p>Select ponds and a date, or upload a CSV to get started</p>
+            <p style="margin-top:8px; font-size:12px; opacity:0.7">
+              Each prediction takes ~15 seconds (GEE + weather lookup)
+            </p>
+          </div>
+
+          <!-- Progress -->
+          <div id="batch-progress" style="display:none">
+            <div class="batch-progress">
+              <div style="display:flex; align-items:center; gap:10px;">
+                <div class="spinner" id="batch-spinner"></div>
+                <div class="progress-text" id="batch-progress-text" style="flex:1;">Starting batch...</div>
+                <button class="btn-stop" id="batch-stop-btn" onclick="stopBatch()" title="Stop batch">Stop</button>
+              </div>
+              <div class="progress-bar-track">
+                <div class="progress-bar-fill" id="batch-progress-bar" style="width:0%"></div>
+              </div>
+              <div class="progress-current" id="batch-progress-current"></div>
+            </div>
+          </div>
+
+          <!-- Results table -->
+          <div id="batch-results" style="display:none">
+            <div class="batch-table-wrap">
+              <table class="batch-results-table">
+                <thead>
+                  <tr>
+                    <th>Pond ID</th>
+                    <th>Target Date</th>
+                    <th>S2 Date</th>
+                    <th>Cloud %</th>
+                    <th>Chl-a (&micro;g/L)</th>
+                  </tr>
+                </thead>
+                <tbody id="batch-tbody"></tbody>
+              </table>
+            </div>
+            <div class="batch-actions">
+              <button class="btn btn-outline" onclick="downloadBatchCSV()">Download CSV</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
 </div>
 
 <footer>
   <a href="https://www.fishwelfareinitiative.org" target="_blank">fishwelfareinitiative.org</a>
-  &nbsp;·&nbsp; Chl-a model by Sol White &nbsp;·&nbsp; XGBoost + Sentinel-2 L1C + Open-Meteo
+  &nbsp;&middot;&nbsp; Chl-a model by Sol White &nbsp;&middot;&nbsp; XGBoost + Sentinel-2 L1C + Open-Meteo
 </footer>
 
 <script>
-// ── State ──
+// ══════════════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════════════
 let ponds = [];
 let map = null;
 let marker = null;
+let batchResults = [];
+let uploadedRequests = [];
 
-// ── Init ──
+// ══════════════════════════════════════════════════════
+// TABS
+// ══════════════════════════════════════════════════════
+function switchTab(tab) {
+  document.querySelectorAll('.tab-btn').forEach((b, i) => {
+    b.classList.toggle('active', (tab === 'single' && i === 0) || (tab === 'batch' && i === 1));
+  });
+  document.getElementById('tab-single').classList.toggle('active', tab === 'single');
+  document.getElementById('tab-batch').classList.toggle('active', tab === 'batch');
+  if (tab === 'single' && map) setTimeout(() => map.invalidateSize(), 100);
+}
+
+// ══════════════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', async () => {
-  // Set date bounds
-  const dateInput = document.getElementById('date-input');
-  dateInput.min = '2026-01-01';
   const today = new Date().toISOString().split('T')[0];
+
+  // Single prediction dates
+  const dateInput = document.getElementById('date-input');
+  dateInput.min = '2025-01-01';
   dateInput.max = today;
   dateInput.value = today;
+
+  // Batch date
+  const batchDate = document.getElementById('batch-date');
+  batchDate.min = '2025-01-01';
+  batchDate.max = today;
+  batchDate.value = today;
 
   // Load ponds
   try {
     const res = await fetch('/api/ponds');
     ponds = await res.json();
     populatePondSelect();
+    populatePondChecklist();
   } catch (e) {
     console.error('Failed to load ponds:', e);
   }
 
   // Init map
   map = L.map('map').setView([15.5, 80.6], 7);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '© OpenStreetMap',
-    maxZoom: 18,
-  }).addTo(map);
+  const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap', maxZoom: 19,
+  });
+  const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution: '&copy; Esri', maxZoom: 19,
+  });
+  satellite.addTo(map);
+  L.control.layers({'Street': osm, 'Satellite': satellite}, null, {position: 'topright'}).addTo(map);
 
   // Event listeners
   document.getElementById('pond-select').addEventListener('change', onPondChange);
   document.getElementById('predict-btn').addEventListener('click', runPrediction);
+
+  // File upload
+  const uploadZone = document.getElementById('upload-zone');
+  const fileInput = document.getElementById('file-input');
+  uploadZone.addEventListener('click', () => fileInput.click());
+  uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('dragover'); });
+  uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'));
+  uploadZone.addEventListener('drop', e => {
+    e.preventDefault(); uploadZone.classList.remove('dragover');
+    if (e.dataTransfer.files.length) handleFileUpload(e.dataTransfer.files[0]);
+  });
+  fileInput.addEventListener('change', () => { if (fileInput.files.length) handleFileUpload(fileInput.files[0]); });
 });
 
+// ══════════════════════════════════════════════════════
+// SINGLE PREDICTION (unchanged logic)
+// ══════════════════════════════════════════════════════
 function populatePondSelect() {
   const sel = document.getElementById('pond-select');
   sel.innerHTML = '<option value="">— Select a pond —</option>';
-
-  // Group by region
   const regions = {};
-  ponds.forEach(p => {
-    if (!regions[p.region]) regions[p.region] = [];
-    regions[p.region].push(p);
-  });
-
+  ponds.forEach(p => { if (!regions[p.region]) regions[p.region] = []; regions[p.region].push(p); });
   for (const [region, regionPonds] of Object.entries(regions).sort()) {
     const group = document.createElement('optgroup');
     group.label = `${region} (${regionPonds.length} ponds)`;
     regionPonds.sort((a, b) => a.id.localeCompare(b.id)).forEach(p => {
       const opt = document.createElement('option');
       opt.value = p.id;
-      const village = p.village ? ` — ${p.village}` : '';
-      opt.textContent = `${p.id}${village}`;
+      opt.textContent = `${p.id}${p.village ? ' — ' + p.village : ''}`;
       group.appendChild(opt);
     });
     sel.appendChild(group);
   }
-
   document.getElementById('predict-btn').disabled = false;
 }
 
 function onPondChange() {
   const id = document.getElementById('pond-select').value;
   const info = document.getElementById('pond-info');
-  const details = document.getElementById('pond-details');
-
-  if (!id) {
-    info.style.display = 'none';
-    return;
-  }
-
+  if (!id) { info.style.display = 'none'; return; }
   const p = ponds.find(x => x.id === id);
   if (!p) return;
-
   info.style.display = 'block';
-  details.innerHTML = `
+  document.getElementById('pond-details').innerHTML = `
     <strong>${p.id}</strong><br>
     ${p.village ? `Village: ${p.village}<br>` : ''}
     ${p.farmer ? `Farmer: ${p.farmer}<br>` : ''}
     Region: ${p.region}<br>
-    <span class="coord">${p.lat.toFixed(6)}°N, ${p.lon.toFixed(6)}°E</span>
+    <span class="coord">${p.lat.toFixed(6)}, ${p.lon.toFixed(6)}</span>
   `;
-
-  // Update map
   if (marker) map.removeLayer(marker);
   marker = L.circleMarker([p.lat, p.lon], {
-    radius: 10,
-    fillColor: '#1a7a7a',
-    fillOpacity: 0.8,
-    color: '#0d3b3b',
-    weight: 2,
+    radius: 10, fillColor: '#1a7a7a', fillOpacity: 0.8, color: '#0d3b3b', weight: 2,
   }).addTo(map).bindPopup(`<strong>${p.id}</strong><br>${p.lat.toFixed(6)}, ${p.lon.toFixed(6)}`);
-  map.setView([p.lat, p.lon], 14);
+  map.setView([p.lat, p.lon], 17);
 }
 
 async function runPrediction() {
   const pondId = document.getElementById('pond-select').value;
   const date = document.getElementById('date-input').value;
-
-  if (!pondId || !date) {
-    alert('Please select a pond and date.');
-    return;
-  }
-
-  // Show loading
+  if (!pondId || !date) { alert('Please select a pond and date.'); return; }
   showState('loading');
   const btn = document.getElementById('predict-btn');
-  btn.disabled = true;
-  btn.textContent = 'Running...';
-
-  // Animate loading steps
-  const steps = [
-    'Searching for Sentinel-2 imagery...',
-    'Extracting spectral band values...',
-    'Fetching weather data from Open-Meteo...',
-    'Running XGBoost model...',
-  ];
+  btn.disabled = true; btn.textContent = 'Running...';
+  const steps = ['Searching for Sentinel-2 imagery...','Extracting spectral band values...','Fetching weather data from Open-Meteo...','Running XGBoost model...'];
   let stepIdx = 0;
-  const stepInterval = setInterval(() => {
-    stepIdx = Math.min(stepIdx + 1, steps.length - 1);
-    document.getElementById('loading-step').textContent = steps[stepIdx];
-  }, 5000);
-
+  const stepInterval = setInterval(() => { stepIdx = Math.min(stepIdx+1, steps.length-1); document.getElementById('loading-step').textContent = steps[stepIdx]; }, 5000);
   try {
-    const res = await fetch('/api/predict', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pond_id: pondId, date }),
-    });
+    const res = await fetch('/api/predict', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({pond_id: pondId, date}) });
     clearInterval(stepInterval);
-
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Prediction failed');
-    }
-
-    const data = await res.json();
-    displayResults(data, date);
+    if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Prediction failed'); }
+    displayResults(await res.json(), date);
   } catch (e) {
     clearInterval(stepInterval);
     document.getElementById('error-msg').textContent = e.message;
     showState('error');
   } finally {
-    btn.disabled = false;
-    btn.textContent = 'Run Prediction';
+    btn.disabled = false; btn.textContent = 'Run Prediction';
   }
 }
 
 function showState(state) {
-  ['empty', 'loading', 'result', 'error'].forEach(s => {
+  ['empty','loading','result','error'].forEach(s => {
     const el = document.getElementById(s + '-state');
     if (el) el.style.display = s === state ? 'block' : 'none';
   });
@@ -514,16 +781,12 @@ function showState(state) {
 
 function displayResults(data, targetDate) {
   showState('result');
-
-  // Hero
-  document.getElementById('pred-value').textContent = data.prediction.toFixed(1);
+  document.getElementById('pred-value').textContent = Math.round(data.prediction);
   const daysBefore = data.satellite.days_before_target;
   document.getElementById('pred-date-info').textContent =
     `Based on Sentinel-2 flyover on ${data.satellite.acq_time.split(' ')[0]} (${daysBefore} day${daysBefore !== 1 ? 's' : ''} before ${targetDate})`;
 
-  // Satellite grid
-  const satGrid = document.getElementById('sat-grid');
-  satGrid.innerHTML = dataItems([
+  document.getElementById('sat-grid').innerHTML = dataItems([
     ['Image ID', data.satellite.image_id || '—'],
     ['Acquisition Time', data.satellite.acq_time || '—'],
     ['Spacecraft', data.satellite.spacecraft || '—'],
@@ -534,35 +797,19 @@ function displayResults(data, targetDate) {
     ['S2 Images Available', data.satellite.days_before_target + 'd window'],
   ]);
 
-  // Band chart
-  const bandChart = document.getElementById('band-chart');
   const bandOrder = ['B1','B2','B3','B4','B5','B6','B7','B8','B8A','B9','B10','B11','B12'];
-  const bandColors = {
-    B1:'#5b21b6', B2:'#3b82f6', B3:'#22c55e', B4:'#ef4444',
-    B5:'#f97316', B6:'#eab308', B7:'#a3e635', B8:'#14b8a6',
-    B8A:'#06b6d4', B9:'#8b5cf6', B10:'#ec4899', B11:'#f43f5e', B12:'#be123c'
-  };
+  const bandColors = {B1:'#5b21b6',B2:'#3b82f6',B3:'#22c55e',B4:'#ef4444',B5:'#f97316',B6:'#eab308',B7:'#a3e635',B8:'#14b8a6',B8A:'#06b6d4',B9:'#8b5cf6',B10:'#ec4899',B11:'#f43f5e',B12:'#be123c'};
   let bandHtml = '';
   bandOrder.forEach(b => {
-    const key = `s2_med3_${b}_median`;
-    const val = data.bands[key];
+    const val = data.bands[`s2_med3_${b}_median`];
     if (val == null) return;
     const pct = Math.min(val * 100 / 0.5, 100);
-    bandHtml += `
-      <div class="band-bar-row">
-        <span class="band-bar-label">${b}</span>
-        <div class="band-bar-track">
-          <div class="band-bar-fill" style="width:${pct}%; background:${bandColors[b]||'#1a7a7a'}"></div>
-        </div>
-        <span class="band-bar-val">${val.toFixed(4)}</span>
-      </div>`;
+    bandHtml += `<div class="band-bar-row"><span class="band-bar-label">${b}</span><div class="band-bar-track"><div class="band-bar-fill" style="width:${pct}%;background:${bandColors[b]||'#1a7a7a'}"></div></div><span class="band-bar-val">${val.toFixed(4)}</span></div>`;
   });
-  bandChart.innerHTML = bandHtml;
+  document.getElementById('band-chart').innerHTML = bandHtml;
 
-  // Weather grid
-  const wg = document.getElementById('weather-grid');
   const w = data.weather;
-  wg.innerHTML = dataItems([
+  document.getElementById('weather-grid').innerHTML = dataItems([
     ['Temp (3-day avg)', w.t2m_3d != null ? w.t2m_3d.toFixed(1) + ' °C' : '—'],
     ['Temp (instant)', w.t2m_inst != null ? w.t2m_inst.toFixed(1) + ' °C' : '—'],
     ['Humidity (3-day avg)', w.rh_3d != null ? w.rh_3d.toFixed(1) + '%' : '—'],
@@ -575,34 +822,269 @@ function displayResults(data, targetDate) {
     ['Solar Rad (3-day sum)', w.swrad_3d_sum != null ? w.swrad_3d_sum.toFixed(1) + ' MJ/m²' : '—'],
   ]);
 
-  // Feature importance
-  const fc = document.getElementById('feat-chart');
   const feats = data.feature_importance || [];
-  if (feats.length === 0) {
-    fc.innerHTML = '<div style="color:var(--fwi-muted);font-size:13px">No feature data</div>';
-  } else {
-    const maxImp = Math.max(...feats.map(f => f.importance));
-    let fhtml = '';
-    feats.forEach(f => {
-      const pct = (f.importance / maxImp) * 100;
-      fhtml += `
-        <div class="feat-row">
-          <span class="feat-name" title="${f.name}">${f.name}</span>
-          <div class="feat-bar-track"><div class="feat-bar-fill" style="width:${pct}%"></div></div>
-          <span class="feat-val">${f.value}</span>
-        </div>`;
-    });
-    fc.innerHTML = fhtml;
-  }
+  const fc = document.getElementById('feat-chart');
+  if (!feats.length) { fc.innerHTML = '<div style="color:var(--fwi-muted);font-size:13px">No feature data</div>'; return; }
+  const maxImp = Math.max(...feats.map(f => f.importance));
+  fc.innerHTML = feats.map(f => {
+    const pct = (f.importance / maxImp) * 100;
+    return `<div class="feat-row"><span class="feat-name" title="${f.name}">${f.name}</span><div class="feat-bar-track"><div class="feat-bar-fill" style="width:${pct}%"></div></div><span class="feat-val">${f.value}</span></div>`;
+  }).join('');
 }
 
 function dataItems(pairs) {
-  return pairs.map(([label, value]) => `
-    <div class="data-item">
-      <div class="data-label">${label}</div>
-      <div class="data-value">${value}</div>
-    </div>
-  `).join('');
+  return pairs.map(([l,v]) => `<div class="data-item"><div class="data-label">${l}</div><div class="data-value">${v}</div></div>`).join('');
+}
+
+// ══════════════════════════════════════════════════════
+// BATCH: POND CHECKLIST
+// ══════════════════════════════════════════════════════
+function populatePondChecklist() {
+  const cl = document.getElementById('pond-checklist');
+  cl.innerHTML = '';
+  const regions = {};
+  ponds.forEach(p => { if (!regions[p.region]) regions[p.region] = []; regions[p.region].push(p); });
+
+  for (const [region, rp] of Object.entries(regions).sort()) {
+    const hdr = document.createElement('div');
+    hdr.className = 'region-header';
+    hdr.innerHTML = `<span>${region} (${rp.length})</span><span style="font-size:10px;font-weight:400;">Select all</span>`;
+    hdr.addEventListener('click', () => {
+      const boxes = cl.querySelectorAll(`input[data-region="${region}"]`);
+      const allChecked = Array.from(boxes).every(b => b.checked);
+      boxes.forEach(b => b.checked = !allChecked);
+      updateSelectedCount();
+    });
+    cl.appendChild(hdr);
+
+    rp.sort((a,b) => a.id.localeCompare(b.id)).forEach(p => {
+      const lbl = document.createElement('label');
+      lbl.className = 'pond-item';
+      lbl.innerHTML = `<input type="checkbox" value="${p.id}" data-region="${region}"> ${p.id}${p.village ? ' — ' + p.village : ''}`;
+      lbl.querySelector('input').addEventListener('change', updateSelectedCount);
+      cl.appendChild(lbl);
+    });
+  }
+}
+
+function updateSelectedCount() {
+  const n = document.querySelectorAll('#pond-checklist input:checked').length;
+  document.getElementById('selected-count').textContent = `${n} pond${n !== 1 ? 's' : ''} selected`;
+}
+
+function getSelectedPondIds() {
+  return Array.from(document.querySelectorAll('#pond-checklist input:checked')).map(cb => cb.value);
+}
+
+// ══════════════════════════════════════════════════════
+// BATCH: MODE TOGGLE
+// ══════════════════════════════════════════════════════
+function setBatchMode(mode) {
+  document.querySelectorAll('.input-toggle .toggle-btn').forEach((b, i) => {
+    b.classList.toggle('active', (mode === 'select' && i === 0) || (mode === 'upload' && i === 1));
+  });
+  document.getElementById('batch-select-mode').style.display = mode === 'select' ? 'block' : 'none';
+  document.getElementById('batch-upload-mode').style.display = mode === 'upload' ? 'block' : 'none';
+}
+
+// ══════════════════════════════════════════════════════
+// BATCH: FILE UPLOAD
+// ══════════════════════════════════════════════════════
+async function handleFileUpload(file) {
+  document.getElementById('upload-filename').style.display = 'block';
+  document.getElementById('upload-filename').textContent = `File: ${file.name}`;
+  document.getElementById('parse-errors').innerHTML = '';
+  document.getElementById('upload-summary').style.display = 'none';
+
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    const res = await fetch('/api/parse-csv', { method: 'POST', body: formData });
+    const data = await res.json();
+
+    if (data.error) {
+      document.getElementById('parse-errors').textContent = data.error;
+      return;
+    }
+
+    uploadedRequests = data.requests;
+
+    if (data.errors && data.errors.length > 0) {
+      document.getElementById('parse-errors').innerHTML =
+        data.errors.slice(0, 10).map(e => `<div>${e}</div>`).join('') +
+        (data.errors.length > 10 ? `<div>...and ${data.errors.length - 10} more</div>` : '');
+    }
+
+    if (data.total_valid > 0) {
+      document.getElementById('upload-summary').style.display = 'block';
+      document.getElementById('upload-summary-text').textContent =
+        `${data.total_valid} valid prediction${data.total_valid !== 1 ? 's' : ''} ready to run` +
+        (data.total_errors > 0 ? ` (${data.total_errors} row${data.total_errors !== 1 ? 's' : ''} skipped)` : '');
+    }
+  } catch (e) {
+    document.getElementById('parse-errors').textContent = `Upload failed: ${e.message}`;
+  }
+}
+
+// ══════════════════════════════════════════════════════
+// BATCH: RUN
+// ══════════════════════════════════════════════════════
+async function runBatchFromSelect() {
+  const ids = getSelectedPondIds();
+  const date = document.getElementById('batch-date').value;
+  if (!ids.length) { alert('Please select at least one pond.'); return; }
+  if (!date) { alert('Please select a date.'); return; }
+  const requests = ids.map(id => ({ pond_id: id, date }));
+  await runBatch(requests);
+}
+
+async function runBatchFromUpload() {
+  if (!uploadedRequests.length) { alert('No valid requests to run.'); return; }
+  await runBatch(uploadedRequests);
+}
+
+let activeBatchId = null;
+let activePoll = null;
+
+async function stopBatch() {
+  if (!activeBatchId) return;
+  try {
+    await fetch(`/api/batch/${activeBatchId}/cancel`, { method: 'POST' });
+  } catch (e) { /* ignore */ }
+  if (activePoll) clearInterval(activePoll);
+  activePoll = null;
+  document.getElementById('batch-stop-btn').style.display = 'none';
+  document.getElementById('batch-spinner').style.display = 'none';
+  document.getElementById('batch-progress-text').textContent =
+    `Stopped — ${batchResults.length} of ${document.getElementById('batch-progress-text').dataset.total || '?'} predictions completed`;
+  document.getElementById('batch-progress-current').textContent = '';
+  // Keep progress bar visible briefly, then hide
+  setTimeout(() => {
+    document.getElementById('batch-progress').style.display = 'none';
+  }, 2000);
+}
+
+async function runBatch(requests) {
+  batchResults = [];
+  activeBatchId = null;
+  if (activePoll) { clearInterval(activePoll); activePoll = null; }
+
+  // Show both progress AND results panels at the same time
+  document.getElementById('batch-empty').style.display = 'none';
+  document.getElementById('batch-progress').style.display = 'block';
+  document.getElementById('batch-results').style.display = 'block';
+  document.getElementById('batch-tbody').innerHTML = '';
+  document.getElementById('batch-stop-btn').style.display = 'inline-block';
+  document.getElementById('batch-spinner').style.display = 'inline-block';
+  const progText = document.getElementById('batch-progress-text');
+  progText.textContent = `Starting batch (${requests.length} prediction${requests.length !== 1 ? 's' : ''})...`;
+  progText.dataset.total = requests.length;
+  document.getElementById('batch-progress-bar').style.width = '0%';
+  document.getElementById('batch-progress-current').textContent = '';
+  let lastRendered = 0;
+
+  try {
+    const res = await fetch('/api/batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requests }),
+    });
+    const { batch_id, total } = await res.json();
+    activeBatchId = batch_id;
+
+    // Poll for progress — render new rows as they arrive
+    activePoll = setInterval(async () => {
+      try {
+        const sr = await fetch(`/api/batch/${batch_id}`);
+        const job = await sr.json();
+        const pct = total > 0 ? (job.completed / total * 100) : 0;
+        document.getElementById('batch-progress-bar').style.width = pct + '%';
+
+        const isDone = job.status === 'done' || job.status === 'cancelled';
+        document.getElementById('batch-progress-text').textContent =
+          job.status === 'done'
+            ? `Done — ${job.completed} prediction${job.completed !== 1 ? 's' : ''} complete`
+            : job.status === 'cancelled'
+            ? `Stopped — ${job.completed} of ${total} predictions completed`
+            : `Processing ${job.completed} of ${total}...`;
+        if (job.current_pond && !isDone) {
+          document.getElementById('batch-progress-current').textContent = `Current: ${job.current_pond}`;
+        } else {
+          document.getElementById('batch-progress-current').textContent = '';
+        }
+
+        // Append only NEW results since last poll
+        if (job.results && job.results.length > lastRendered) {
+          const tbody = document.getElementById('batch-tbody');
+          for (let i = lastRendered; i < job.results.length; i++) {
+            const r = job.results[i];
+            const tr = document.createElement('tr');
+            tr.style.animation = 'fadeIn 0.3s ease';
+            if (r.error) {
+              tr.innerHTML = `<td>${r.pond_id}</td><td>${r.date}</td><td>—</td><td>—</td><td class="error-cell">${r.error}</td>`;
+            } else {
+              tr.innerHTML = `<td>${r.pond_id}</td><td>${r.date}</td><td>${r.s2_date || '—'}</td><td>${r.cloud_pct != null ? r.cloud_pct + '%' : '—'}</td><td class="chla-cell">${r.chla}</td>`;
+            }
+            tbody.appendChild(tr);
+          }
+          lastRendered = job.results.length;
+          batchResults = job.results;
+        }
+
+        if (isDone) {
+          clearInterval(activePoll);
+          activePoll = null;
+          document.getElementById('batch-stop-btn').style.display = 'none';
+          document.getElementById('batch-spinner').style.display = 'none';
+          // Hide progress bar after a short delay, keep results
+          setTimeout(() => {
+            document.getElementById('batch-progress').style.display = 'none';
+          }, 1500);
+        }
+      } catch (e) {
+        clearInterval(activePoll);
+        activePoll = null;
+        showBatchState('empty');
+        alert('Batch polling failed: ' + e.message);
+      }
+    }, 1500);
+
+  } catch (e) {
+    showBatchState('empty');
+    alert('Failed to start batch: ' + e.message);
+  }
+}
+
+function showBatchState(state) {
+  document.getElementById('batch-empty').style.display = state === 'empty' ? 'block' : 'none';
+  document.getElementById('batch-progress').style.display = state === 'progress' ? 'block' : 'none';
+  document.getElementById('batch-results').style.display = state === 'results' ? 'block' : 'none';
+}
+
+function renderBatchResults() {
+  const tbody = document.getElementById('batch-tbody');
+  tbody.innerHTML = batchResults.map(r => {
+    if (r.error) {
+      return `<tr><td>${r.pond_id}</td><td>${r.date}</td><td>—</td><td>—</td><td class="error-cell">${r.error}</td></tr>`;
+    }
+    return `<tr><td>${r.pond_id}</td><td>${r.date}</td><td>${r.s2_date || '—'}</td><td>${r.cloud_pct != null ? r.cloud_pct + '%' : '—'}</td><td class="chla-cell">${r.chla}</td></tr>`;
+  }).join('');
+}
+
+function downloadBatchCSV() {
+  if (!batchResults.length) return;
+  let csv = 'pond_id,target_date,s2_date,cloud_pct,chla_ug_L,error\n';
+  batchResults.forEach(r => {
+    csv += `${r.pond_id},${r.date},${r.s2_date || ''},${r.cloud_pct != null ? r.cloud_pct : ''},${r.chla != null ? r.chla : ''},${r.error || ''}\n`;
+  });
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `chla_batch_${new Date().toISOString().split('T')[0]}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 </script>
 </body>

@@ -2,17 +2,6 @@
 """
 FWI Chl-a Prediction Web App
 Flask backend serving the prediction API and frontend.
-
-Usage:
-    pip install flask httpx nest_asyncio pandas numpy joblib earthengine-api xgboost
-    python app.py
-
-    Then open http://localhost:5000 in your browser.
-
-    Requires:
-    - Google Earth Engine credentials (run `earthengine authenticate` first)
-    - Model file at ../models/xgb_chla.joblib
-    - ARA key file at ../2026 Github ARA Pond IDs Key.csv
 """
 import os, sys, json, asyncio, traceback
 import numpy as np
@@ -21,16 +10,19 @@ import httpx
 import ee
 import joblib
 import nest_asyncio
+import google.auth
 from flask import Flask, request, jsonify, send_from_directory
 from datetime import datetime, timedelta
 from pathlib import Path
+from io import BytesIO
 
 nest_asyncio.apply()
 
 app = Flask(__name__, static_folder="static")
 
-# ── Paths (relative to this file) ──
-BASE_DIR = Path(__file__).resolve().parent.parent
+# ── Paths ──
+# BASE_DIR works both locally (parent of webapp/) and in Docker (/app)
+BASE_DIR = Path(os.environ.get("APP_BASE_DIR", str(Path(__file__).resolve().parent.parent)))
 MODEL_PATH = str(BASE_DIR / "models" / "xgb_chla.joblib")
 ARA_KEY_PATH = str(BASE_DIR / "2026 Github ARA Pond IDs Key.csv")
 
@@ -48,13 +40,24 @@ BEST_ITERATION = BUNDLE.get("best_iteration", None)
 
 # ── GEE init ──
 EE_INITIALIZED = False
+GEE_PROJECT = os.environ.get("GEE_PROJECT", "ee-haven")
 
 def init_ee():
     global EE_INITIALIZED
     if not EE_INITIALIZED:
-        ee.Initialize(project="")
+        # On Cloud Run, use the default service account credentials automatically.
+        # Locally, falls back to `earthengine authenticate` credentials.
+        try:
+            credentials, project = google.auth.default(
+                scopes=["https://www.googleapis.com/auth/earthengine"]
+            )
+            ee.Initialize(credentials=credentials, project=GEE_PROJECT or project)
+            print(f"[GEE] Initialized with service account (project={GEE_PROJECT or project})")
+        except Exception:
+            # Fallback for local dev with `earthengine authenticate`
+            ee.Initialize(project=GEE_PROJECT)
+            print(f"[GEE] Initialized with default credentials (project={GEE_PROJECT})")
         EE_INITIALIZED = True
-        print("[GEE] Initialized")
 
 # ══════════════════════════════════════════════════════════════
 # ROUTES
@@ -63,6 +66,23 @@ def init_ee():
 @app.route("/")
 def index():
     return send_from_directory("static", "index.html")
+
+@app.route("/api/example-csv")
+def example_csv():
+    """Serve an example batch CSV file."""
+    from flask import Response
+    csv_content = (
+        "pond_id,lat,lon,2025-06-28,2025-07-13,2025-08-02\n"
+        "NSR1,16.6627,81.7584,,,\n"
+        "NRR1,16.8131,81.3153,,,\n"
+        "AKR1,16.5698,80.9228,,,\n"
+        ",13.0850,80.2700,,,\n"
+    )
+    return Response(
+        csv_content,
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=chla_batch_example.csv"},
+    )
 
 @app.route("/api/ponds")
 def get_ponds():
@@ -96,7 +116,7 @@ def predict():
 
         init_ee()
 
-        # Step 1: Find most recent S2 image BEFORE target date
+        # Step 1: Find most recent S2 image ON or BEFORE target date
         s2_result = find_recent_s2(lon, lat, target_date)
         if s2_result is None:
             return jsonify({"error": "No Sentinel-2 image found in the 30 days before this date"}), 404
@@ -112,7 +132,7 @@ def predict():
         prediction = run_model(features)
 
         return jsonify({
-            "prediction": round(float(prediction), 2),
+            "prediction": round(float(prediction)),
             "pond": {
                 "id": pond_id,
                 "lat": lat,
@@ -153,16 +173,260 @@ def predict():
 
 
 # ══════════════════════════════════════════════════════════════
+# BATCH PREDICTION
+# ══════════════════════════════════════════════════════════════
+
+# In-memory store for batch job progress
+_batch_jobs = {}
+
+def _predict_one(pond_id, date_str, lat=None, lon=None):
+    """Run a single prediction. Accepts pond_id OR lat/lon. Returns dict with result or error."""
+    label = pond_id or f"{lat},{lon}"
+    try:
+        # Resolve coordinates
+        if lat is None or lon is None:
+            pond_row = PONDS_WITH_GPS[PONDS_WITH_GPS["internal_pond_id"] == pond_id]
+            if pond_row.empty:
+                return {"pond_id": label, "date": date_str, "error": f"Pond not found or no GPS"}
+            lat = float(pond_row.iloc[0]["latitude"])
+            lon = float(pond_row.iloc[0]["longitude"])
+
+        target_date = pd.Timestamp(date_str, tz="UTC")
+
+        s2_result = find_recent_s2(lon, lat, target_date)
+        if s2_result is None:
+            return {"pond_id": label, "date": date_str, "error": "No S2 image in 30-day window"}
+
+        s2_data, s2_meta = s2_result
+        s2_date = pd.Timestamp(s2_meta["acq_time"], tz="UTC")
+        weather = get_weather(lat, lon, s2_date)
+        features = build_feature_row(s2_data, s2_meta, weather)
+        prediction = run_model(features)
+
+        return {
+            "pond_id": label,
+            "date": date_str,
+            "s2_date": s2_meta.get("acq_time", "").split(" ")[0],
+            "cloud_pct": round(s2_meta.get("cloud_pct", 0), 1) if s2_meta.get("cloud_pct") is not None else None,
+            "chla": round(float(prediction)),
+            "error": None,
+        }
+    except Exception as e:
+        return {"pond_id": label, "date": date_str, "error": str(e)}
+
+
+@app.route("/api/batch", methods=["POST"])
+def batch_predict():
+    """
+    Accepts {"requests": [{"pond_id": "...", "date": "YYYY-MM-DD"}, ...]}
+    Returns a batch_id. Poll /api/batch/<batch_id> for progress.
+    """
+    import uuid, threading
+
+    data = request.json or {}
+    reqs = data.get("requests", [])
+    if not reqs:
+        return jsonify({"error": "No requests provided"}), 400
+    if len(reqs) > 500:
+        return jsonify({"error": "Maximum 500 predictions per batch"}), 400
+
+    batch_id = str(uuid.uuid4())[:8]
+    _batch_jobs[batch_id] = {
+        "status": "running",
+        "total": len(reqs),
+        "completed": 0,
+        "current_pond": "",
+        "results": [],
+    }
+
+    def _run():
+        init_ee()
+        job = _batch_jobs[batch_id]
+        for i, req in enumerate(reqs):
+            if job["status"] == "cancelled":
+                break
+            pid = req.get("pond_id", "")
+            dt = req.get("date", "")
+            lat = req.get("lat")
+            lon = req.get("lon")
+            job["current_pond"] = pid or f"{lat},{lon}"
+            result = _predict_one(pid, dt, lat=lat, lon=lon)
+            job["results"].append(result)
+            job["completed"] = i + 1
+        if job["status"] != "cancelled":
+            job["status"] = "done"
+        job["current_pond"] = ""
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+
+    return jsonify({"batch_id": batch_id, "total": len(reqs)})
+
+
+@app.route("/api/batch/<batch_id>")
+def batch_status(batch_id):
+    """Poll for batch job progress."""
+    job = _batch_jobs.get(batch_id)
+    if not job:
+        return jsonify({"error": "Batch not found"}), 404
+    return jsonify(job)
+
+@app.route("/api/batch/<batch_id>/cancel", methods=["POST"])
+def batch_cancel(batch_id):
+    """Stop a running batch job. Already-completed results are kept."""
+    job = _batch_jobs.get(batch_id)
+    if not job:
+        return jsonify({"error": "Batch not found"}), 404
+    if job["status"] == "running":
+        job["status"] = "cancelled"
+    return jsonify({"status": job["status"], "completed": job["completed"]})
+
+
+@app.route("/api/parse-csv", methods=["POST"])
+def parse_csv():
+    """
+    Upload a CSV/XLSX with columns: lat, lon, then one or more date columns.
+    Each date column header should be a date (e.g. 2025-06-28).
+    Returns validated requests as JSON.
+    """
+    if "file" not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+
+    f = request.files["file"]
+    fname = f.filename.lower()
+
+    try:
+        if fname.endswith(".xlsx") or fname.endswith(".xls"):
+            df = pd.read_excel(BytesIO(f.read()), dtype=str)
+        else:
+            df = pd.read_csv(BytesIO(f.read()), dtype=str)
+    except Exception as e:
+        return jsonify({"error": f"Could not parse file: {e}"}), 400
+
+    # Normalize column names (strip whitespace, lowercase)
+    df.columns = [c.strip().lower().replace(" ", "_") for c in df.columns]
+
+    # --- Detect format ---
+    # New format: lat, lon, then date columns
+    # Legacy format: pond_id, date
+
+    lat_col = None
+    for c in ["lat", "latitude"]:
+        if c in df.columns:
+            lat_col = c
+            break
+
+    lon_col = None
+    for c in ["lon", "long", "longitude", "lng"]:
+        if c in df.columns:
+            lon_col = c
+            break
+
+    # Also check for optional pond_id/label column
+    label_col = None
+    for c in ["pond_id", "pond", "label", "name", "id", "internal_pond_id"]:
+        if c in df.columns:
+            label_col = c
+            break
+
+    requests_out = []
+    errors = []
+
+    if lat_col and lon_col:
+        # ── NEW FORMAT: lat, lon, date-columns ──
+        # All columns that aren't lat/lon/label are treated as date columns
+        skip_cols = {lat_col, lon_col}
+        if label_col:
+            skip_cols.add(label_col)
+        date_cols = [c for c in df.columns if c not in skip_cols]
+
+        if not date_cols:
+            return jsonify({"error": "No date columns found. Add columns with date headers (e.g. 2025-06-28) after lat and lon."}), 400
+
+        # Validate date column headers
+        valid_date_cols = []
+        for dc in date_cols:
+            try:
+                pd.to_datetime(dc)
+                valid_date_cols.append(dc)
+            except:
+                errors.append(f"Column '{dc}' is not a recognized date — skipped")
+
+        if not valid_date_cols:
+            return jsonify({"error": "No valid date columns found. Column headers after lat/lon should be dates (e.g. 2025-06-28)."}), 400
+
+        for i, row in df.iterrows():
+            row_num = i + 2  # header is row 1
+            # Parse lat/lon
+            try:
+                lat_val = float(row[lat_col])
+                lon_val = float(row[lon_col])
+            except (ValueError, TypeError):
+                errors.append(f"Row {row_num}: invalid lat/lon '{row[lat_col]}', '{row[lon_col]}'")
+                continue
+
+            if not (-90 <= lat_val <= 90) or not (-180 <= lon_val <= 180):
+                errors.append(f"Row {row_num}: lat/lon out of range ({lat_val}, {lon_val})")
+                continue
+
+            label = str(row[label_col]).strip() if label_col and pd.notna(row.get(label_col)) and str(row[label_col]).strip() else f"{lat_val:.4f}, {lon_val:.4f}"
+
+            for dc in valid_date_cols:
+                date_str = pd.to_datetime(dc).strftime("%Y-%m-%d")
+                requests_out.append({
+                    "pond_id": label,
+                    "date": date_str,
+                    "lat": lat_val,
+                    "lon": lon_val,
+                })
+
+    elif label_col:
+        # ── LEGACY FORMAT: pond_id, date ──
+        date_col = None
+        for candidate in ["date", "target_date", "prediction_date"]:
+            if candidate in df.columns:
+                date_col = candidate
+                break
+        if date_col is None:
+            return jsonify({"error": "Could not find a 'date' column. Expected columns: pond_id, date (or use lat, lon, date-columns format)"}), 400
+
+        valid_ids = set(PONDS_WITH_GPS["internal_pond_id"].values)
+        for i, row in df.iterrows():
+            pid = str(row[label_col]).strip()
+            raw_date = row[date_col]
+            try:
+                dt = pd.to_datetime(raw_date)
+                date_str = dt.strftime("%Y-%m-%d")
+            except:
+                errors.append(f"Row {i+2}: invalid date '{raw_date}'")
+                continue
+            if pid not in valid_ids:
+                errors.append(f"Row {i+2}: unknown pond_id '{pid}'")
+                continue
+            requests_out.append({"pond_id": pid, "date": date_str})
+    else:
+        return jsonify({"error": "Could not detect CSV format. Expected columns: lat, lon (plus date columns as headers) — or: pond_id, date"}), 400
+
+    return jsonify({
+        "requests": requests_out,
+        "errors": errors,
+        "total_valid": len(requests_out),
+        "total_errors": len(errors),
+    })
+
+
+# ══════════════════════════════════════════════════════════════
 # S2 EXTRACTION
 # ══════════════════════════════════════════════════════════════
 
 def find_recent_s2(lon, lat, target_date, max_days_back=30):
-    """Find the most recent S2 L1C image BEFORE target_date."""
+    """Find the most recent S2 L1C image ON or BEFORE target_date."""
     pt = ee.Geometry.Point(lon, lat)
     aoi = pt.buffer(100)
 
-    t_end = ee.Date(target_date.isoformat())
-    t_start = t_end.advance(-max_days_back, "day")
+    # GEE filterDate end is EXCLUSIVE, so advance by 1 day to include target_date
+    t_end = ee.Date(target_date.isoformat()).advance(1, "day")
+    t_start = t_end.advance(-(max_days_back + 1), "day")
 
     col = (ee.ImageCollection("COPERNICUS/S2_HARMONIZED")
              .filterBounds(aoi)
@@ -196,6 +460,7 @@ def find_recent_s2(lon, lat, target_date, max_days_back=30):
         cp_img = ee.Image(cp_filt.first())
         cp_source = "index"
     else:
+        # Try nearest in time
         cp_time_filt = (cp_all.filterBounds(aoi)
                         .filterDate(t_start, t_end)
                         .map(lambda c: ee.Image(c).set("td", ee.Number(c.get("system:time_start")).subtract(ee.Number(acq_ms)).abs()))
@@ -276,6 +541,7 @@ def find_recent_s2(lon, lat, target_date, max_days_back=30):
 # WEATHER
 # ══════════════════════════════════════════════════════════════
 
+COORD_PREC = 5
 BASE_FORECAST = "https://api.open-meteo.com/v1/forecast"
 BASE_HISTFOR = "https://historical-forecast-api.open-meteo.com/v1/forecast"
 BASE_ARCHIVE = "https://archive-api.open-meteo.com/v1/archive"
@@ -420,6 +686,4 @@ def get_top_features(X):
 
 
 if __name__ == "__main__":
-    print("Starting FWI Chl-a Prediction Web App...")
-    print("Open http://localhost:5000 in your browser")
-    app.run(host="0.0.0.0", port=5000, debug=False)
+    app.run(host="0.0.0.0", port=8080, debug=False)
