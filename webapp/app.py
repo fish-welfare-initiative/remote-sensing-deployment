@@ -168,6 +168,8 @@ def predict():
                 "cp_source": s2_meta.get("cp_source", ""),
                 "spacecraft": s2_meta.get("spacecraft", ""),
                 "days_before_target": round((target_date - s2_date).total_seconds() / 86400, 1),
+                "thumb_url": s2_meta.get("thumb_url"),
+                "thumb_bounds": s2_meta.get("thumb_bounds"),
             },
             "bands": {k: round(v, 6) if v is not None else None for k, v in s2_data.items() if k.startswith("s2_med3_")},
             "ndwi": round(s2_data.get("s2_med3_NDWI", 0), 4),
@@ -572,8 +574,8 @@ def find_recent_s2(lon, lat, target_date, max_days_back=30):
         ne = [bounds_coords[2][1], bounds_coords[2][0]]
         meta["thumb_url"] = thumb_url
         meta["thumb_bounds"] = [sw, ne]
-    except Exception:
-        pass  # thumbnail is optional; prediction still works
+    except Exception as e:
+        print(f"[WARN] S2 thumbnail generation failed: {e}")  # optional; prediction still works
 
     return s2_data, meta
 
