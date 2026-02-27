@@ -117,15 +117,23 @@ def get_ponds():
 def predict():
     try:
         data = request.json
-        pond_id = data["pond_id"]
         date_str = data["date"]  # YYYY-MM-DD
 
-        pond_row = PONDS_WITH_GPS[PONDS_WITH_GPS["internal_pond_id"] == pond_id]
-        if pond_row.empty:
-            return jsonify({"error": f"Pond {pond_id} not found or has no GPS"}), 400
-
-        lat = float(pond_row.iloc[0]["latitude"])
-        lon = float(pond_row.iloc[0]["longitude"])
+        # Support either pond_id lookup OR direct lat/lon
+        pond_id = data.get("pond_id")
+        if pond_id:
+            pond_row = PONDS_WITH_GPS[PONDS_WITH_GPS["internal_pond_id"] == pond_id]
+            if pond_row.empty:
+                return jsonify({"error": f"Pond {pond_id} not found or has no GPS"}), 400
+            lat = float(pond_row.iloc[0]["latitude"])
+            lon = float(pond_row.iloc[0]["longitude"])
+        elif "lat" in data and "lon" in data:
+            lat = float(data["lat"])
+            lon = float(data["lon"])
+            pond_id = f"GPS ({lat:.4f}, {lon:.4f})"
+            pond_row = None
+        else:
+            return jsonify({"error": "Provide either pond_id or lat+lon"}), 400
         target_date = pd.Timestamp(date_str, tz="UTC")
 
         init_ee()
@@ -156,9 +164,9 @@ def predict():
                 "id": pond_id,
                 "lat": lat,
                 "lon": lon,
-                "region": str(pond_row.iloc[0]["region"]),
-                "village": str(pond_row.iloc[0]["village"]) if pd.notna(pond_row.iloc[0]["village"]) else "",
-                "farmer": str(pond_row.iloc[0]["farmer_name"]) if pd.notna(pond_row.iloc[0]["farmer_name"]) else "",
+                "region": str(pond_row.iloc[0]["region"]) if pond_row is not None else "",
+                "village": str(pond_row.iloc[0]["village"]) if pond_row is not None and pd.notna(pond_row.iloc[0]["village"]) else "",
+                "farmer": str(pond_row.iloc[0]["farmer_name"]) if pond_row is not None and pd.notna(pond_row.iloc[0]["farmer_name"]) else "",
             },
             "satellite": {
                 "image_id": s2_meta.get("image_id", ""),
@@ -561,17 +569,16 @@ def find_recent_s2(lon, lat, target_date, max_days_back=30):
     # Generate true-color thumbnail for map overlay
     try:
         thumb_region = pt.buffer(500)  # 500m around pond → ~1km × 1km
-        thumb_region_geojson = thumb_region.bounds().getInfo()
-        thumb_url = (s2_raw.select(["B4", "B3", "B2"])
-                     .divide(10000.0)
-                     .visualize(min=0, max=0.3)
-                     .getThumbURL({
-                         "dimensions": 512,
-                         "region": thumb_region_geojson,
-                         "crs": "EPSG:4326",
-                         "format": "png",
-                     }))
-        bounds_coords = thumb_region_geojson["coordinates"][0]
+        thumb_geom = thumb_region.bounds()
+        thumb_url = s2_raw.getThumbURL({
+            "bands": ["B4", "B3", "B2"],
+            "min": 0,
+            "max": 3000,
+            "dimensions": 512,
+            "region": thumb_geom,
+            "format": "png",
+        })
+        bounds_coords = thumb_geom.getInfo()["coordinates"][0]
         sw = [bounds_coords[0][1], bounds_coords[0][0]]
         ne = [bounds_coords[2][1], bounds_coords[2][0]]
         meta["thumb_url"] = thumb_url
@@ -579,7 +586,7 @@ def find_recent_s2(lon, lat, target_date, max_days_back=30):
     except Exception as e:
         import traceback
         traceback.print_exc()
-        print(f"[WARN] S2 thumbnail generation failed: {e}")
+        meta["thumb_error"] = str(e)
 
     return s2_data, meta
 

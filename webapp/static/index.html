@@ -401,10 +401,29 @@ footer a { color: var(--fwi-teal); text-decoration: none; }
           </div>
           <div class="card-body">
             <div class="form-group">
-              <label>Pond</label>
-              <select id="pond-select">
-                <option value="">Loading ponds...</option>
-              </select>
+              <label>Location Mode</label>
+              <div style="display:flex;gap:6px;margin-bottom:8px;">
+                <button class="btn" id="mode-pond-btn" onclick="setLocationMode('pond')" style="flex:1;font-size:12px;padding:6px 8px;background:var(--fwi-teal);color:#fff;">Select Pond</button>
+                <button class="btn" id="mode-gps-btn" onclick="setLocationMode('gps')" style="flex:1;font-size:12px;padding:6px 8px;background:var(--fwi-sand);color:var(--fwi-dark);">Enter GPS</button>
+              </div>
+            </div>
+            <div id="pond-mode">
+              <div class="form-group">
+                <label>Pond</label>
+                <select id="pond-select">
+                  <option value="">Loading ponds...</option>
+                </select>
+              </div>
+            </div>
+            <div id="gps-mode" style="display:none;">
+              <div class="form-group">
+                <label>Latitude</label>
+                <input type="number" id="gps-lat" step="any" placeholder="e.g. 16.167" style="width:100%;padding:8px;border:1px solid var(--fwi-border);border-radius:6px;font-size:14px;" />
+              </div>
+              <div class="form-group">
+                <label>Longitude</label>
+                <input type="number" id="gps-lon" step="any" placeholder="e.g. 80.183" style="width:100%;padding:8px;border:1px solid var(--fwi-border);border-radius:6px;font-size:14px;" />
+              </div>
             </div>
             <div class="form-group">
               <label>Target Date</label>
@@ -652,6 +671,7 @@ let s2Overlay = null;
 let layerControl = null;
 let osmLayer = null;
 let satelliteLayer = null;
+let locationMode = 'pond';  // 'pond' or 'gps'
 
 // ══════════════════════════════════════════════════════
 // TABS
@@ -663,6 +683,37 @@ function switchTab(tab) {
   document.getElementById('tab-single').classList.toggle('active', tab === 'single');
   document.getElementById('tab-batch').classList.toggle('active', tab === 'batch');
   if (tab === 'single' && map) setTimeout(() => map.invalidateSize(), 100);
+}
+
+// ══════════════════════════════════════════════════════
+// LOCATION MODE
+// ══════════════════════════════════════════════════════
+function setLocationMode(mode) {
+  locationMode = mode;
+  document.getElementById('pond-mode').style.display = mode === 'pond' ? 'block' : 'none';
+  document.getElementById('gps-mode').style.display = mode === 'gps' ? 'block' : 'none';
+  const pondBtn = document.getElementById('mode-pond-btn');
+  const gpsBtn = document.getElementById('mode-gps-btn');
+  if (mode === 'pond') {
+    pondBtn.style.background = 'var(--fwi-teal)'; pondBtn.style.color = '#fff';
+    gpsBtn.style.background = 'var(--fwi-sand)'; gpsBtn.style.color = 'var(--fwi-dark)';
+  } else {
+    gpsBtn.style.background = 'var(--fwi-teal)'; gpsBtn.style.color = '#fff';
+    pondBtn.style.background = 'var(--fwi-sand)'; pondBtn.style.color = 'var(--fwi-dark)';
+  }
+  updatePredictButton();
+}
+
+function updatePredictButton() {
+  const date = document.getElementById('date-input').value;
+  const btn = document.getElementById('predict-btn');
+  if (locationMode === 'pond') {
+    btn.disabled = !document.getElementById('pond-select').value || !date;
+  } else {
+    const lat = document.getElementById('gps-lat').value;
+    const lon = document.getElementById('gps-lon').value;
+    btn.disabled = !lat || !lon || !date;
+  }
 }
 
 // ══════════════════════════════════════════════════════
@@ -705,8 +756,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   layerControl = L.control.layers({'Street': osmLayer, 'Satellite': satelliteLayer}, null, {position: 'topright'}).addTo(map);
 
   // Event listeners
-  document.getElementById('pond-select').addEventListener('change', onPondChange);
+  document.getElementById('pond-select').addEventListener('change', () => { onPondChange(); updatePredictButton(); });
   document.getElementById('predict-btn').addEventListener('click', runPrediction);
+  document.getElementById('date-input').addEventListener('change', updatePredictButton);
+  document.getElementById('gps-lat').addEventListener('input', updatePredictButton);
+  document.getElementById('gps-lon').addEventListener('input', updatePredictButton);
 
   // File upload
   const uploadZone = document.getElementById('upload-zone');
@@ -765,9 +819,24 @@ function onPondChange() {
 }
 
 async function runPrediction() {
-  const pondId = document.getElementById('pond-select').value;
   const date = document.getElementById('date-input').value;
-  if (!pondId || !date) { alert('Please select a pond and date.'); return; }
+  let body;
+  if (locationMode === 'gps') {
+    const lat = parseFloat(document.getElementById('gps-lat').value);
+    const lon = parseFloat(document.getElementById('gps-lon').value);
+    if (isNaN(lat) || isNaN(lon) || !date) { alert('Please enter latitude, longitude, and date.'); return; }
+    body = { lat, lon, date };
+    // Update map to GPS point
+    if (marker) map.removeLayer(marker);
+    marker = L.circleMarker([lat, lon], {
+      radius: 10, fillColor: '#1a7a7a', fillOpacity: 0.8, color: '#0d3b3b', weight: 2,
+    }).addTo(map).bindPopup(`<strong>Custom GPS</strong><br>${lat.toFixed(6)}, ${lon.toFixed(6)}`);
+    map.setView([lat, lon], 17);
+  } else {
+    const pondId = document.getElementById('pond-select').value;
+    if (!pondId || !date) { alert('Please select a pond and date.'); return; }
+    body = { pond_id: pondId, date };
+  }
   showState('loading');
   const btn = document.getElementById('predict-btn');
   btn.disabled = true; btn.textContent = 'Running...';
@@ -775,7 +844,7 @@ async function runPrediction() {
   let stepIdx = 0;
   const stepInterval = setInterval(() => { stepIdx = Math.min(stepIdx+1, steps.length-1); document.getElementById('loading-step').textContent = steps[stepIdx]; }, 5000);
   try {
-    const res = await fetch('/api/predict', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({pond_id: pondId, date}) });
+    const res = await fetch('/api/predict', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
     clearInterval(stepInterval);
     if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Prediction failed'); }
     displayResults(await res.json(), date);
