@@ -20,12 +20,18 @@ nest_asyncio.apply()
 
 def sanitize(obj):
     """Replace NaN/Inf with None so JSON serialization works."""
-    if isinstance(obj, float) and (math.isnan(obj) or math.isinf(obj)):
-        return None
+    if isinstance(obj, (float, np.floating)):
+        if math.isnan(obj) or math.isinf(obj):
+            return None
+        return float(obj)          # ensure native Python float for JSON
+    if isinstance(obj, (np.integer,)):
+        return int(obj)            # ensure native Python int for JSON
     if isinstance(obj, dict):
         return {k: sanitize(v) for k, v in obj.items()}
-    if isinstance(obj, list):
+    if isinstance(obj, (list, tuple)):
         return [sanitize(v) for v in obj]
+    if isinstance(obj, np.ndarray):
+        return [sanitize(v) for v in obj.tolist()]
     return obj
 
 app = Flask(__name__, static_folder="static")
@@ -766,8 +772,18 @@ def get_top_features(X, model=None, feature_names=None):
     feat_imp = sorted(zip(feature_names, importances), key=lambda x: -x[1])[:10]
     result = []
     for name, imp in feat_imp:
-        val = float(X[name].iloc[0]) if name in X.columns else 0
-        result.append({"name": name, "importance": round(float(imp), 4), "value": round(val, 6)})
+        val = float(X[name].iloc[0]) if name in X.columns else 0.0
+        # Guard against NaN/Inf leaking into JSON
+        if not math.isfinite(val):
+            val = None
+        else:
+            val = round(val, 6)
+        imp_val = float(imp)
+        if not math.isfinite(imp_val):
+            imp_val = 0.0
+        else:
+            imp_val = round(imp_val, 4)
+        result.append({"name": name, "importance": imp_val, "value": val})
     return result
 
 
