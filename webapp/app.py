@@ -179,9 +179,27 @@ def predict():
 
         s2_data, s2_meta = s2_result
 
+        # ── Quality gates ──
+        # Gate 1: Cloud cover too high (scene-level > 80% OR pixel-level > 70%)
+        scene_cloud = s2_meta.get("cloud_pct")
+        pixel_cloud = s2_meta.get("cp_probability")
+        if scene_cloud is not None and scene_cloud > 80:
+            return jsonify({"error": f"Cloud cover too high ({scene_cloud:.0f}% scene cloud). Prediction would be unreliable."}), 422
+        if pixel_cloud is not None and pixel_cloud > 70:
+            return jsonify({"error": f"Cloud probability at pond too high ({pixel_cloud:.0f}%). The satellite pixel is likely obscured by cloud."}), 422
+
+        # Gate 2: Pond appears dry (NDWI < -0.1 suggests no open water)
+        ndwi = s2_data.get("s2_med3_NDWI")
+        if ndwi is not None and not math.isnan(ndwi) and ndwi < -0.1:
+            return jsonify({"error": f"Pond may be dry or empty (NDWI = {ndwi:.3f}). NDWI below −0.1 indicates no open water detected."}), 422
+
         # Step 2: Get weather for the S2 acquisition date
         s2_date = pd.Timestamp(s2_meta["acq_time"], tz="UTC")
         weather = get_weather(lat, lon, s2_date)
+
+        # Gate 3: No weather data retrieved
+        if not weather:
+            return jsonify({"error": "Weather data unavailable for this date. Cannot produce a reliable prediction without weather features."}), 422
 
         # Step 3: Build feature rows and predict all models
         features_chla = build_feature_row(s2_data, s2_meta, weather, CHLA_FEATURE_NAMES)
@@ -270,8 +288,24 @@ def _predict_one(pond_id, date_str, lat=None, lon=None):
             return {"pond_id": label, "date": date_str, "error": "No S2 image in 30-day window"}
 
         s2_data, s2_meta = s2_result
+
+        # ── Quality gates ──
+        scene_cloud = s2_meta.get("cloud_pct")
+        pixel_cloud = s2_meta.get("cp_probability")
+        if scene_cloud is not None and scene_cloud > 80:
+            return {"pond_id": label, "date": date_str, "error": f"Cloud cover too high ({scene_cloud:.0f}%)"}
+        if pixel_cloud is not None and pixel_cloud > 70:
+            return {"pond_id": label, "date": date_str, "error": f"Cloud prob at pond too high ({pixel_cloud:.0f}%)"}
+
+        ndwi = s2_data.get("s2_med3_NDWI")
+        if ndwi is not None and not math.isnan(ndwi) and ndwi < -0.1:
+            return {"pond_id": label, "date": date_str, "error": f"Pond may be dry (NDWI={ndwi:.3f})"}
+
         s2_date = pd.Timestamp(s2_meta["acq_time"], tz="UTC")
         weather = get_weather(lat, lon, s2_date)
+
+        if not weather:
+            return {"pond_id": label, "date": date_str, "error": "Weather data unavailable"}
 
         # Chl-a prediction
         features_chla = build_feature_row(s2_data, s2_meta, weather, CHLA_FEATURE_NAMES)
