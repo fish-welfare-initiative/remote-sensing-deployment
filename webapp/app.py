@@ -40,7 +40,8 @@ app = Flask(__name__, static_folder="static")
 # BASE_DIR works both locally (parent of webapp/) and in Docker (/app)
 BASE_DIR = Path(os.environ.get("APP_BASE_DIR", str(Path(__file__).resolve().parent.parent)))
 CHLA_MODEL_PATH = str(BASE_DIR / "models" / "xgb_chla.joblib")
-DO_MODEL_PATH = str(BASE_DIR / "models" / "xgb_do.joblib")
+DO_V1_MODEL_PATH = str(BASE_DIR / "models" / "xgb_do_v1.joblib")
+DO_V2_MODEL_PATH = str(BASE_DIR / "models" / "xgb_do.joblib")
 ARA_KEY_PATH = str(BASE_DIR / "2026 Github ARA Pond IDs Key.csv")
 
 # ── Load pond data at startup ──
@@ -55,12 +56,25 @@ CHLA_FEATURE_NAMES = CHLA_BUNDLE["feature_names"]
 CHLA_TRANSFORM = CHLA_BUNDLE.get("transform", "none")
 CHLA_BEST_ITER = CHLA_BUNDLE.get("best_iteration", None)
 
-# ── Load DO model at startup ──
-DO_BUNDLE = joblib.load(DO_MODEL_PATH)
-DO_MODEL = DO_BUNDLE["model"]
-DO_FEATURE_NAMES = DO_BUNDLE["feature_names"]
-DO_TRANSFORM = DO_BUNDLE.get("transform", "none")
-DO_BEST_ITER = DO_BUNDLE.get("best_iteration", None)
+# ── Load DO Model 1 at startup ──
+DO_V1_BUNDLE = joblib.load(DO_V1_MODEL_PATH)
+DO_V1_MODEL = DO_V1_BUNDLE["model"]
+DO_V1_FEATURE_NAMES = DO_V1_BUNDLE["feature_names"]
+DO_V1_TRANSFORM = DO_V1_BUNDLE.get("transform", "none")
+DO_V1_BEST_ITER = DO_V1_BUNDLE.get("best_iteration", None)
+
+# ── Load DO Model 2 at startup ──
+DO_V2_BUNDLE = joblib.load(DO_V2_MODEL_PATH)
+DO_V2_MODEL = DO_V2_BUNDLE["model"]
+DO_V2_FEATURE_NAMES = DO_V2_BUNDLE["feature_names"]
+DO_V2_TRANSFORM = DO_V2_BUNDLE.get("transform", "none")
+DO_V2_BEST_ITER = DO_V2_BUNDLE.get("best_iteration", None)
+
+# Legacy aliases — DO_MODEL etc. point to Model 2 for backward compat
+DO_MODEL = DO_V2_MODEL
+DO_FEATURE_NAMES = DO_V2_FEATURE_NAMES
+DO_TRANSFORM = DO_V2_TRANSFORM
+DO_BEST_ITER = DO_V2_BEST_ITER
 
 # Legacy aliases so batch code doesn't break
 MODEL = CHLA_MODEL
@@ -169,17 +183,21 @@ def predict():
         s2_date = pd.Timestamp(s2_meta["acq_time"], tz="UTC")
         weather = get_weather(lat, lon, s2_date)
 
-        # Step 3: Build feature rows and predict both models
+        # Step 3: Build feature rows and predict all models
         features_chla = build_feature_row(s2_data, s2_meta, weather, CHLA_FEATURE_NAMES)
-        features_do = build_feature_row(s2_data, s2_meta, weather, DO_FEATURE_NAMES)
+        features_do_v1 = build_feature_row(s2_data, s2_meta, weather, DO_V1_FEATURE_NAMES)
+        features_do_v2 = build_feature_row(s2_data, s2_meta, weather, DO_V2_FEATURE_NAMES)
 
         chla_pred = run_model(features_chla, CHLA_MODEL, CHLA_BEST_ITER, CHLA_TRANSFORM)
-        do_pred = run_model(features_do, DO_MODEL, DO_BEST_ITER, DO_TRANSFORM)
+        do_v1_pred = run_model(features_do_v1, DO_V1_MODEL, DO_V1_BEST_ITER, DO_V1_TRANSFORM)
+        do_v2_pred = run_model(features_do_v2, DO_V2_MODEL, DO_V2_BEST_ITER, DO_V2_TRANSFORM)
 
         return jsonify(sanitize({
             "prediction_chla": round(float(chla_pred)),
-            "prediction_do": round(float(do_pred), 1),
-            "prediction": round(float(chla_pred)),  # backward compat for batch
+            "prediction_do_v1": round(float(do_v1_pred), 1),
+            "prediction_do_v2": round(float(do_v2_pred), 1),
+            "prediction_do": round(float(do_v2_pred), 1),  # backward compat
+            "prediction": round(float(chla_pred)),  # backward compat
             "pond": {
                 "id": pond_id,
                 "lat": lat,
@@ -216,7 +234,9 @@ def predict():
                 "ws10_inst": weather.get("ws10_inst"),
             },
             "feature_importance_chla": get_top_features(features_chla, CHLA_MODEL, CHLA_FEATURE_NAMES),
-            "feature_importance_do": get_top_features(features_do, DO_MODEL, DO_FEATURE_NAMES),
+            "feature_importance_do_v1": get_top_features(features_do_v1, DO_V1_MODEL, DO_V1_FEATURE_NAMES),
+            "feature_importance_do_v2": get_top_features(features_do_v2, DO_V2_MODEL, DO_V2_FEATURE_NAMES),
+            "feature_importance_do": get_top_features(features_do_v2, DO_V2_MODEL, DO_V2_FEATURE_NAMES),  # backward compat
             "feature_importance": get_top_features(features_chla, CHLA_MODEL, CHLA_FEATURE_NAMES),  # backward compat
         }))
     except Exception as e:
@@ -232,7 +252,7 @@ def predict():
 _batch_jobs = {}
 
 def _predict_one(pond_id, date_str, lat=None, lon=None):
-    """Run a single prediction. Accepts pond_id OR lat/lon. Returns dict with result or error."""
+    """Run a single prediction (Chl-a + DO). Accepts pond_id OR lat/lon. Returns dict with result or error."""
     label = pond_id or f"{lat},{lon}"
     try:
         # Resolve coordinates
@@ -252,15 +272,27 @@ def _predict_one(pond_id, date_str, lat=None, lon=None):
         s2_data, s2_meta = s2_result
         s2_date = pd.Timestamp(s2_meta["acq_time"], tz="UTC")
         weather = get_weather(lat, lon, s2_date)
-        features = build_feature_row(s2_data, s2_meta, weather)
-        prediction = run_model(features)
+
+        # Chl-a prediction
+        features_chla = build_feature_row(s2_data, s2_meta, weather, CHLA_FEATURE_NAMES)
+        chla_pred = run_model(features_chla, CHLA_MODEL, CHLA_BEST_ITER, CHLA_TRANSFORM)
+
+        # DO predictions (both models)
+        features_do_v1 = build_feature_row(s2_data, s2_meta, weather, DO_V1_FEATURE_NAMES)
+        do_v1_pred = run_model(features_do_v1, DO_V1_MODEL, DO_V1_BEST_ITER, DO_V1_TRANSFORM)
+
+        features_do_v2 = build_feature_row(s2_data, s2_meta, weather, DO_V2_FEATURE_NAMES)
+        do_v2_pred = run_model(features_do_v2, DO_V2_MODEL, DO_V2_BEST_ITER, DO_V2_TRANSFORM)
 
         return {
             "pond_id": label,
             "date": date_str,
             "s2_date": s2_meta.get("acq_time", "").split(" ")[0],
             "cloud_pct": round(s2_meta.get("cloud_pct", 0), 1) if s2_meta.get("cloud_pct") is not None else None,
-            "chla": round(float(prediction)),
+            "chla": round(float(chla_pred)),
+            "do_v1": round(float(do_v1_pred), 1),
+            "do_v2": round(float(do_v2_pred), 1),
+            "do": round(float(do_v2_pred), 1),  # backward compat
             "error": None,
         }
     except Exception as e:
