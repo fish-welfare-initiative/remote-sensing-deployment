@@ -659,13 +659,32 @@ DAILY_VARS = "temperature_2m_mean,relative_humidity_2m_mean,cloud_cover_mean,win
 HOURLY_VARS = "temperature_2m,relative_humidity_2m,precipitation,cloud_cover,wind_speed_10m,shortwave_radiation,sunshine_duration"
 
 def _route_backend(sample_day_utc):
+    """Return a list of base URLs to try, in priority order.
+
+    The historical-forecast API has been unreliable (500 errors for 2025+
+    dates), so we always include BASE_ARCHIVE as a fallback for non-recent
+    dates.
+    """
     now_utc = pd.Timestamp.now(tz="UTC")
     cutoff_recent = (now_utc - pd.Timedelta(days=RECENT_DAYS_BUF)).floor("D")
     if sample_day_utc > cutoff_recent:
-        return BASE_FORECAST
+        return [BASE_FORECAST]
+    # For dates in the historical-forecast window, try it first but fall back
+    # to archive if it errors out.
     if sample_day_utc >= CUTOFF_HISTFC:
-        return BASE_HISTFOR
-    return BASE_ARCHIVE
+        return [BASE_HISTFOR, BASE_ARCHIVE]
+    return [BASE_ARCHIVE]
+
+def _fetch_json(backends, params, label=""):
+    """Try each backend URL in order; return parsed JSON on first success."""
+    for base in backends:
+        try:
+            r = httpx.get(base, params=params, timeout=30)
+            r.raise_for_status()
+            return r.json()
+        except Exception as e:
+            print(f"[Weather] {label} {base} failed: {e}")
+    return None
 
 def get_weather(lat, lon, s2_date):
     """Get 3-day rolling weather + instantaneous weather for the S2 date."""
@@ -674,82 +693,82 @@ def get_weather(lat, lon, s2_date):
     end = day.strftime("%Y-%m-%d")
     end_dminus1 = (day - pd.Timedelta(days=1)).strftime("%Y-%m-%d")
 
-    base = _route_backend(day)
+    backends = _route_backend(day)
     result = {}
 
     # Daily
     try:
-        r = httpx.get(base, params={
+        js = _fetch_json(backends, {
             "latitude": lat, "longitude": lon,
             "daily": DAILY_VARS, "start_date": start, "end_date": end_dminus1,
             "timezone": "UTC", "cell_selection": "nearest"
-        }, timeout=30)
-        js = r.json()
-        d = js.get("daily", {})
-        dates = pd.to_datetime(d.get("time", []), utc=True).date
-        if len(dates) > 0:
-            df_d = pd.DataFrame({
-                "date": dates,
-                "t2m_mean": pd.to_numeric(pd.Series(d.get("temperature_2m_mean", [])), errors="coerce").values,
-                "rh_mean": pd.to_numeric(pd.Series(d.get("relative_humidity_2m_mean", [])), errors="coerce").values,
-                "cloud_mean": pd.to_numeric(pd.Series(d.get("cloud_cover_mean", [])), errors="coerce").values,
-                "ws10_mean": pd.to_numeric(pd.Series(d.get("wind_speed_10m_mean", [])), errors="coerce").values,
-                "precip_sum": pd.to_numeric(pd.Series(d.get("precipitation_sum", [])), errors="coerce").values,
-                "swrad_sum": pd.to_numeric(pd.Series(d.get("shortwave_radiation_sum", [])), errors="coerce").values,
-                "sunshine_s": pd.to_numeric(pd.Series(d.get("sunshine_duration", [])), errors="coerce").values,
-                "weather_code": pd.to_numeric(pd.Series(d.get("weather_code", [])), errors="coerce").values,
-            }).set_index("date").sort_index()
+        }, label="Daily")
+        if js:
+            d = js.get("daily", {})
+            dates = pd.to_datetime(d.get("time", []), utc=True).date
+            if len(dates) > 0:
+                df_d = pd.DataFrame({
+                    "date": dates,
+                    "t2m_mean": pd.to_numeric(pd.Series(d.get("temperature_2m_mean", [])), errors="coerce").values,
+                    "rh_mean": pd.to_numeric(pd.Series(d.get("relative_humidity_2m_mean", [])), errors="coerce").values,
+                    "cloud_mean": pd.to_numeric(pd.Series(d.get("cloud_cover_mean", [])), errors="coerce").values,
+                    "ws10_mean": pd.to_numeric(pd.Series(d.get("wind_speed_10m_mean", [])), errors="coerce").values,
+                    "precip_sum": pd.to_numeric(pd.Series(d.get("precipitation_sum", [])), errors="coerce").values,
+                    "swrad_sum": pd.to_numeric(pd.Series(d.get("shortwave_radiation_sum", [])), errors="coerce").values,
+                    "sunshine_s": pd.to_numeric(pd.Series(d.get("sunshine_duration", [])), errors="coerce").values,
+                    "weather_code": pd.to_numeric(pd.Series(d.get("weather_code", [])), errors="coerce").values,
+                }).set_index("date").sort_index()
 
-            roll_mean = df_d[["t2m_mean","rh_mean","cloud_mean","ws10_mean"]].rolling(3, min_periods=3).mean()
-            roll_sum = df_d[["precip_sum","swrad_sum","sunshine_s"]].rolling(3, min_periods=3).sum()
-            roll_wc = df_d[["weather_code"]].rolling(3, min_periods=3).apply(lambda x: x.mode()[0] if len(x.mode()) > 0 else x.iloc[-1], raw=False)
-            roll = pd.concat([roll_mean, roll_sum, roll_wc], axis=1)
+                roll_mean = df_d[["t2m_mean","rh_mean","cloud_mean","ws10_mean"]].rolling(3, min_periods=3).mean()
+                roll_sum = df_d[["precip_sum","swrad_sum","sunshine_s"]].rolling(3, min_periods=3).sum()
+                roll_wc = df_d[["weather_code"]].rolling(3, min_periods=3).apply(lambda x: x.mode()[0] if len(x.mode()) > 0 else x.iloc[-1], raw=False)
+                roll = pd.concat([roll_mean, roll_sum, roll_wc], axis=1)
 
-            pick = (day - pd.Timedelta(days=1)).date()
-            if pick in roll.index:
-                v = roll.loc[pick]
-                result["t2m_3d"] = float(v.get("t2m_mean", np.nan))
-                result["rh_3d"] = float(v.get("rh_mean", np.nan))
-                result["cloud_3d"] = float(v.get("cloud_mean", np.nan))
-                result["ws10_3d"] = float(v.get("ws10_mean", np.nan))
-                result["precip_3d_sum"] = float(v.get("precip_sum", np.nan))
-                result["swrad_3d_sum"] = float(v.get("swrad_sum", np.nan))
-                result["sunshine_3d_sum_s"] = float(v.get("sunshine_s", np.nan))
-                result["weather_code_3d_mode"] = float(v.get("weather_code", np.nan))
-                result["t2m_3d_mean"] = result["t2m_3d"]
-                result["rh_3d_mean"] = result["rh_3d"]
-                result["cloud_3d_mean"] = result["cloud_3d"]
-                result["ws10_3d_mean"] = result["ws10_3d"]
+                pick = (day - pd.Timedelta(days=1)).date()
+                if pick in roll.index:
+                    v = roll.loc[pick]
+                    result["t2m_3d"] = float(v.get("t2m_mean", np.nan))
+                    result["rh_3d"] = float(v.get("rh_mean", np.nan))
+                    result["cloud_3d"] = float(v.get("cloud_mean", np.nan))
+                    result["ws10_3d"] = float(v.get("ws10_mean", np.nan))
+                    result["precip_3d_sum"] = float(v.get("precip_sum", np.nan))
+                    result["swrad_3d_sum"] = float(v.get("swrad_sum", np.nan))
+                    result["sunshine_3d_sum_s"] = float(v.get("sunshine_s", np.nan))
+                    result["weather_code_3d_mode"] = float(v.get("weather_code", np.nan))
+                    result["t2m_3d_mean"] = result["t2m_3d"]
+                    result["rh_3d_mean"] = result["rh_3d"]
+                    result["cloud_3d_mean"] = result["cloud_3d"]
+                    result["ws10_3d_mean"] = result["ws10_3d"]
     except Exception as e:
         print(f"[Weather] Daily error: {e}")
 
     # Hourly
     try:
-        r = httpx.get(base, params={
+        js = _fetch_json(backends, {
             "latitude": lat, "longitude": lon,
             "hourly": HOURLY_VARS, "start_date": start, "end_date": end,
             "timezone": "UTC", "cell_selection": "nearest"
-        }, timeout=30)
-        js = r.json()
-        h = js.get("hourly", {})
-        times = pd.to_datetime(h.get("time", []), utc=True)
-        if len(times) > 0:
-            df_h = pd.DataFrame({"time": times})
-            for k in ["temperature_2m","relative_humidity_2m","cloud_cover","wind_speed_10m","shortwave_radiation","precipitation","sunshine_duration"]:
-                df_h[k] = pd.to_numeric(pd.Series(h.get(k, [])), errors="coerce").values
-            df_h = df_h.set_index("time").sort_index()
+        }, label="Hourly")
+        if js:
+            h = js.get("hourly", {})
+            times = pd.to_datetime(h.get("time", []), utc=True)
+            if len(times) > 0:
+                df_h = pd.DataFrame({"time": times})
+                for k in ["temperature_2m","relative_humidity_2m","cloud_cover","wind_speed_10m","shortwave_radiation","precipitation","sunshine_duration"]:
+                    df_h[k] = pd.to_numeric(pd.Series(h.get(k, [])), errors="coerce").values
+                df_h = df_h.set_index("time").sort_index()
 
-            t0 = s2_date.floor("h")
-            idxr = df_h.index.get_indexer([t0], method="nearest", tolerance=pd.Timedelta(hours=1))
-            if idxr.size and idxr[0] != -1:
-                hv = df_h.iloc[idxr[0]]
-                result["t2m_inst"] = float(hv.get("temperature_2m", np.nan))
-                result["rh_inst"] = float(hv.get("relative_humidity_2m", np.nan))
-                result["cloud_inst"] = float(hv.get("cloud_cover", np.nan))
-                result["ws10_inst"] = float(hv.get("wind_speed_10m", np.nan))
-                result["swrad_inst"] = float(hv.get("shortwave_radiation", np.nan))
-                result["precip_inst"] = float(hv.get("precipitation", np.nan))
-                result["sunshine_inst_s"] = float(hv.get("sunshine_duration", np.nan))
+                t0 = s2_date.floor("h")
+                idxr = df_h.index.get_indexer([t0], method="nearest", tolerance=pd.Timedelta(hours=1))
+                if idxr.size and idxr[0] != -1:
+                    hv = df_h.iloc[idxr[0]]
+                    result["t2m_inst"] = float(hv.get("temperature_2m", np.nan))
+                    result["rh_inst"] = float(hv.get("relative_humidity_2m", np.nan))
+                    result["cloud_inst"] = float(hv.get("cloud_cover", np.nan))
+                    result["ws10_inst"] = float(hv.get("wind_speed_10m", np.nan))
+                    result["swrad_inst"] = float(hv.get("shortwave_radiation", np.nan))
+                    result["precip_inst"] = float(hv.get("precipitation", np.nan))
+                    result["sunshine_inst_s"] = float(hv.get("sunshine_duration", np.nan))
     except Exception as e:
         print(f"[Weather] Hourly error: {e}")
 
