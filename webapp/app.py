@@ -3,7 +3,7 @@
 FWI Water Quality Prediction Web App
 Flask backend serving the Chl-a and DO prediction API and frontend.
 """
-import os, sys, json, asyncio, traceback
+import os, sys, json, math, asyncio, traceback
 import numpy as np
 import pandas as pd
 import httpx
@@ -17,6 +17,16 @@ from pathlib import Path
 from io import BytesIO
 
 nest_asyncio.apply()
+
+def sanitize(obj):
+    """Replace NaN/Inf with None so JSON serialization works."""
+    if isinstance(obj, float) and (math.isnan(obj) or math.isinf(obj)):
+        return None
+    if isinstance(obj, dict):
+        return {k: sanitize(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [sanitize(v) for v in obj]
+    return obj
 
 app = Flask(__name__, static_folder="static")
 
@@ -160,7 +170,7 @@ def predict():
         chla_pred = run_model(features_chla, CHLA_MODEL, CHLA_BEST_ITER, CHLA_TRANSFORM)
         do_pred = run_model(features_do, DO_MODEL, DO_BEST_ITER, DO_TRANSFORM)
 
-        return jsonify({
+        return jsonify(sanitize({
             "prediction_chla": round(float(chla_pred)),
             "prediction_do": round(float(do_pred), 1),
             "prediction": round(float(chla_pred)),  # backward compat for batch
@@ -202,7 +212,7 @@ def predict():
             "feature_importance_chla": get_top_features(features_chla, CHLA_MODEL, CHLA_FEATURE_NAMES),
             "feature_importance_do": get_top_features(features_do, DO_MODEL, DO_FEATURE_NAMES),
             "feature_importance": get_top_features(features_chla, CHLA_MODEL, CHLA_FEATURE_NAMES),  # backward compat
-        })
+        }))
     except Exception as e:
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
